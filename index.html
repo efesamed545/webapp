@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flow — Tasks & Calendar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Auth gate (shown until session exists) -->
+  <div class="auth-gate" id="authGate" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-gate-inner">
+      <div class="auth-card card">
+        <div class="auth-brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg width="36" height="36" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="9" fill="currentColor" opacity="0.15"/>
+              <path d="M9 16L14 21L23 11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <h1 class="auth-title" id="authTitle">Flow</h1>
+          <p class="auth-tagline muted" data-i18n="auth.subtitle">Sign in to sync tasks & calendar</p>
+        </div>
+
+        <div id="authPanelWelcome" class="auth-panel">
+          <p class="auth-security-note" data-i18n="auth.secureNote">Secure connection. Your password is never stored in plain text on this device.</p>
+          <div class="auth-oauth-row">
+            <button type="button" class="btn btn-oauth btn-oauth--google" id="authBtnGoogle">
+              <span class="btn-oauth-icon" aria-hidden="true">G</span>
+              <span data-i18n="auth.google">Continue with Google</span>
+            </button>
+            <button type="button" class="btn btn-oauth btn-oauth--apple" id="authBtnApple">
+              <span class="btn-oauth-icon" aria-hidden="true"></span>
+              <span data-i18n="auth.apple">Continue with Apple</span>
+            </button>
+          </div>
+          <div class="auth-divider"><span data-i18n="auth.orEmail">or with email</span></div>
+          <button type="button" class="btn btn-primary btn-block" id="authBtnShowEmailLogin" data-i18n="auth.emailSignIn">Sign in with email</button>
+          <button type="button" class="btn btn-ghost btn-block" id="authBtnShowRegister" data-i18n="auth.register">Create account</button>
+          <p class="auth-switch muted small">
+            <span data-i18n="auth.returningQ">Already registered?</span>
+            <button type="button" class="btn-link" id="authBtnQuickLogin" data-i18n="auth.signInShort">Sign in</button>
+          </p>
+        </div>
+
+        <div id="authPanelLogin" class="auth-panel" hidden>
+          <h2 class="auth-panel-title" data-i18n="auth.loginTitle">Sign in</h2>
+          <form id="authFormLogin" class="auth-form" novalidate>
+            <div class="field">
+              <label for="authLoginEmail"><span data-i18n="auth.email">Email</span></label>
+              <input type="email" id="authLoginEmail" autocomplete="email" required data-i18n-placeholder="auth.emailPlaceholder" placeholder="you@example.com" />
+            </div>
+            <div class="field">
+              <div class="field-label-row">
+                <label for="authLoginPassword"><span data-i18n="auth.password">Password</span></label>
+                <button type="button" class="btn-link btn-link--small" id="authToggleLoginPw" data-i18n="auth.showPassword">Show</button>
+              </div>
+              <input type="password" id="authLoginPassword" autocomplete="current-password" required />
+            </div>
+            <p class="field-error" id="authLoginError" hidden role="alert"></p>
+            <button type="submit" class="btn btn-primary btn-block" data-i18n="auth.signIn">Sign in</button>
+            <button type="button" class="btn btn-ghost btn-block" id="authBackFromLogin" data-i18n="auth.back">Back</button>
+          </form>
+        </div>
+
+        <div id="authPanelRegister" class="auth-panel" hidden>
+          <h2 class="auth-panel-title" data-i18n="auth.registerTitle">Create account</h2>
+          <p class="auth-hint muted small" data-i18n="auth.passwordRules">Use at least 8 characters with letters and numbers.</p>
+          <form id="authFormRegister" class="auth-form" novalidate>
+            <div class="field">
+              <label for="authRegName"><span data-i18n="auth.fullName">Full name</span></label>
+              <input type="text" id="authRegName" maxlength="120" autocomplete="name" required data-i18n-placeholder="auth.fullNamePlaceholder" placeholder="Your name" />
+            </div>
+            <div class="field">
+              <label for="authRegEmail"><span data-i18n="auth.email">Email</span></label>
+              <input type="email" id="authRegEmail" autocomplete="email" required data-i18n-placeholder="auth.emailPlaceholder" placeholder="you@example.com" />
+            </div>
+            <div class="field">
+              <label for="authRegUsername"><span data-i18n="auth.username">Username</span> <span class="muted">(<span data-i18n="auth.optional">optional</span>)</span></label>
+              <input type="text" id="authRegUsername" maxlength="40" autocomplete="username" data-i18n-placeholder="auth.usernamePlaceholder" placeholder="flow_user" />
+            </div>
+            <div class="field">
+              <div class="field-label-row">
+                <label for="authRegPassword"><span data-i18n="auth.password">Password</span></label>
+                <button type="button" class="btn-link btn-link--small" id="authToggleRegPw" data-i18n="auth.showPassword">Show</button>
+              </div>
+              <input type="password" id="authRegPassword" autocomplete="new-password" required minlength="8" />
+            </div>
+            <div class="field">
+              <label for="authRegPassword2"><span data-i18n="auth.passwordConfirm">Confirm password</span></label>
+              <input type="password" id="authRegPassword2" autocomplete="new-password" required />
+            </div>
+            <p class="field-error" id="authRegisterError" hidden role="alert"></p>
+            <button type="submit" class="btn btn-primary btn-block" data-i18n="auth.createAccount">Create account</button>
+            <button type="button" class="btn btn-ghost btn-block" id="authBackFromRegister" data-i18n="auth.back">Back</button>
+          </form>
+        </div>
+
+        <p class="auth-legal muted small">
+          <span data-i18n="auth.legalAgree">By continuing you agree to our</span>
+          <button type="button" class="btn-link" id="authLinkTerms" data-i18n="auth.terms">Terms</button>
+          <span data-i18n="auth.and">and</span>
+          <button type="button" class="btn-link" id="authLinkPrivacyFromGate" data-i18n="auth.privacy">Privacy</button>.
+        </p>
+        <p class="auth-oauth-dev muted small" data-i18n="auth.oauthDevHint">Google &amp; Apple: configure client IDs in script (AUTH_CONFIG) for production.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="app" id="app" hidden>
+    <button type="button" class="nav-toggle" id="navToggle" data-i18n-aria="aria.openMenu" aria-label="Open menu" aria-expanded="false">
+      <span class="nav-toggle-bar"></span>
+      <span class="nav-toggle-bar"></span>
+    </button>
+
+    <aside class="sidebar" id="sidebar" data-i18n-aria="aria.sidebarNav" aria-label="Main navigation">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-profile">
+          <button type="button" class="sidebar-avatar-btn" id="btnSidebarAvatar" data-i18n-title="settings.openTitle" title="Profile & settings" aria-label="Open profile and settings">
+            <span class="avatar avatar--sidebar" id="sidebarAvatarHost" aria-hidden="true"></span>
+          </button>
+          <p class="sidebar-user-name" id="sidebarUserName">You</p>
+        </div>
+        <div class="sidebar-brand-main">
+          <div class="brand-mark" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="9" fill="currentColor" opacity="0.15"/>
+              <path d="M9 16L14 21L23 11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="sidebar-brand-copy">
+            <span class="brand-name">Flow</span>
+            <span class="brand-workspace" data-i18n="brand.workspace">Momentum over management</span>
+            <span class="brand-tagline" data-i18n="brand.tagline">Tasks & events</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item active" data-view="dashboard" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </span>
+          <span data-i18n="nav.dashboard">Dashboard</span>
+        </button>
+        <button type="button" class="nav-item" data-view="tasks">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </span>
+          <span data-i18n="nav.tasks">Tasks</span>
+        </button>
+        <button type="button" class="nav-item" data-view="calendar">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </span>
+          <span data-i18n="nav.calendar">Calendar</span>
+        </button>
+        <button type="button" class="nav-item" data-view="motivation">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8 6 4 9 4 14a8 8 0 0 0 16 0c0-5-4-8-8-12z" fill="currentColor" opacity="0.2"/><path d="M12 2C8 6 4 9 4 14a8 8 0 0 0 16 0c0-5-4-8-8-12z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          </span>
+          <span data-i18n="nav.motivation">Motivation</span>
+        </button>
+        <button type="button" class="nav-item" data-view="selfcare">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-6.5-4.35-9-8.2C1.35 10.22 2.38 6.5 5.92 5.6A5 5 0 0 1 12 8a5 5 0 0 1 6.08-2.4c3.54.9 4.57 4.62 2.92 7.2C18.5 16.65 12 21 12 21z"/></svg>
+          </span>
+          <span data-i18n="nav.selfcare">Self-Care</span>
+        </button>
+        <button type="button" class="nav-item" data-view="focus">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+          </span>
+          <span data-i18n="nav.focus">Focus</span>
+        </button>
+        <button type="button" class="nav-item" data-view="achievements">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M8 14h8"/><path d="M9 2l1.2 2.4M15 2l-1.2 2.4"/><path d="M9 20l3-3 3 3"/><path d="M6 11v10h4"/><path d="M18 11v10h-4"/></svg>
+          </span>
+          <span data-i18n="nav.achievements">Achievements</span>
+        </button>
+        <button type="button" class="nav-item" data-view="groups">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </span>
+          <span data-i18n="nav.groups">Groups</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button type="button" class="sidebar-footer-link" id="btnSidebarSettings" data-i18n-aria="aria.settings" data-i18n-title="settings.openTitle" aria-label="Settings" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <span data-i18n="settings.title">Settings</span>
+        </button>
+        <button type="button" class="theme-toggle" id="themeToggle" data-i18n-title="theme.toggleTitle" data-i18n-aria="aria.toggleTheme" title="Toggle theme" aria-label="Toggle light or dark theme">
+          <span class="theme-icon theme-icon-sun" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          </span>
+          <span class="theme-icon theme-icon-moon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+    <main class="main">
+      <header class="main-header">
+        <div class="main-header-inner">
+          <div class="main-header-text">
+            <h1 class="page-title" id="pageTitle">Dashboard</h1>
+            <p class="page-subtitle" id="pageSubtitle">Your upcoming work at a glance</p>
+          </div>
+          <div class="main-header-actions">
+            <button type="button" class="btn-settings" id="btnSettings" data-i18n-aria="aria.settings" data-i18n-title="settings.openTitle" aria-label="Settings" title="Settings">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div class="coach-banner" id="coachBanner" hidden role="status">
+        <div class="coach-banner-inner">
+          <div class="coach-avatar" id="coachAvatarHost" aria-hidden="true"></div>
+          <p class="coach-banner-text" id="coachBannerText"></p>
+          <button type="button" class="coach-banner-close" id="coachBannerClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+        </div>
+      </div>
+
+      <section class="view view-dashboard active" id="viewDashboard" aria-labelledby="pageTitle">
+        <div class="dashboard-grid">
+          <div class="card card-stat">
+            <span class="stat-label" data-i18n="stats.openTasks">Open tasks</span>
+            <span class="stat-value" id="statOpenTasks">0</span>
+          </div>
+          <div class="card card-stat">
+            <span class="stat-label" data-i18n="stats.eventsWeek">Events this week</span>
+            <span class="stat-value" id="statWeekEvents">0</span>
+          </div>
+          <div class="card card-stat">
+            <span class="stat-label" data-i18n="stats.dueSoon">Due soon</span>
+            <span class="stat-value" id="statDueSoon">0</span>
+          </div>
+          <div class="card card-stat card-stat--accent">
+            <span class="stat-label" data-i18n="streak.current">Streak</span>
+            <span class="stat-value" id="dashStreakMini">0</span>
+            <button type="button" class="btn-text stat-link" data-action="go-motivation" data-i18n="dashboard.openMotivation">Motivation</button>
+          </div>
+          <div class="card card-stat card-stat--accent">
+            <span class="stat-label" data-i18n="buddy.shortLabel">Buddy</span>
+            <span class="stat-value" id="dashBuddyMini">0</span>
+            <button type="button" class="btn-text stat-link" data-action="go-motivation" data-i18n="dashboard.openMotivation">Motivation</button>
+          </div>
+        </div>
+
+        <div class="dashboard-columns">
+          <div class="card card-panel">
+            <div class="panel-head">
+              <h2 data-i18n="dashboard.upcomingTasks">Upcoming tasks</h2>
+              <button type="button" class="btn-text" data-action="go-tasks" data-i18n="dashboard.viewAll">View all</button>
+            </div>
+            <div class="panel-body" id="dashboardTasks"></div>
+          </div>
+          <div class="card card-panel">
+            <div class="panel-head">
+              <h2 data-i18n="dashboard.upcomingEvents">Upcoming events</h2>
+              <button type="button" class="btn-text" data-action="go-calendar" data-i18n="dashboard.calendarBtn">Calendar</button>
+            </div>
+            <div class="panel-body" id="dashboardEvents"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view view-tasks" id="viewTasks" hidden aria-labelledby="pageTitle">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <label class="filter-label" for="taskFilter" data-i18n="tasks.filter">Filter</label>
+            <select id="taskFilter" class="input-select">
+              <option value="all" data-i18n="tasks.filterAll">All tasks</option>
+              <option value="open" data-i18n="tasks.filterOpen">Open</option>
+              <option value="done" data-i18n="tasks.filterDone">Completed</option>
+            </select>
+            <label class="filter-label" for="taskSort" data-i18n="tasks.sort">Sort</label>
+            <select id="taskSort" class="input-select">
+              <option value="due" data-i18n="tasks.sortDue">By due date</option>
+              <option value="priority" data-i18n="tasks.sortPriority">By priority</option>
+              <option value="created" data-i18n="tasks.sortCreated">Recently added</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary" id="btnAddTask">
+            <span class="btn-icon" aria-hidden="true">+</span>
+            <span data-i18n="tasks.newTask">New task</span>
+          </button>
+        </div>
+
+        <div class="task-list-wrap">
+          <ul class="task-list" id="taskList" role="list"></ul>
+          <div class="empty-state" id="tasksEmpty" hidden>
+            <div class="empty-illustration" aria-hidden="true">
+              <svg width="120" height="100" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="60" cy="88" rx="40" ry="6" fill="currentColor" opacity="0.08"/>
+                <rect x="28" y="22" width="64" height="52" rx="8" stroke="currentColor" stroke-width="1.5" opacity="0.25"/>
+                <path d="M40 38h40M40 48h28M40 58h36" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.2"/>
+                <circle cx="60" cy="12" r="8" fill="currentColor" opacity="0.12"/>
+              </svg>
+            </div>
+            <h3 class="empty-title" data-i18n="tasks.emptyTitle">Nothing here yet</h3>
+            <p class="empty-text" data-i18n="tasks.emptyText">Add your first task and stay on top of what matters.</p>
+            <button type="button" class="btn btn-primary" data-action="add-task-empty" data-i18n="tasks.createTask">Create task</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="view view-calendar" id="viewCalendar" hidden aria-labelledby="pageTitle">
+        <div class="calendar-toolbar">
+          <div class="cal-nav">
+            <button type="button" class="btn-icon-round" id="calPrev" data-i18n-aria="aria.prevPeriod" aria-label="Previous period">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <h2 class="cal-title" id="calTitle">March 2026</h2>
+            <button type="button" class="btn-icon-round" id="calNext" data-i18n-aria="aria.nextPeriod" aria-label="Next period">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <button type="button" class="btn btn-ghost" id="calToday" data-i18n="calendar.today">Today</button>
+          </div>
+          <div class="cal-mode">
+            <div class="segmented" role="group" data-i18n-aria="aria.calMode" aria-label="Calendar view mode">
+              <button type="button" class="segment active" data-cal-mode="month" id="modeMonth" data-i18n="calendar.month">Month</button>
+              <button type="button" class="segment" data-cal-mode="week" id="modeWeek" data-i18n="calendar.week">Week</button>
+            </div>
+            <button type="button" class="btn btn-ghost btn-recap" id="btnCalendarRecap" data-i18n="calendar.recap">Recap</button>
+            <button type="button" class="btn btn-primary" id="btnAddEvent">
+              <span class="btn-icon" aria-hidden="true">+</span>
+              <span data-i18n="calendar.newEvent">New event</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="calendar-layout">
+          <div class="card cal-card">
+            <div class="cal-grid-head" id="calWeekdayLabels"></div>
+            <div class="cal-grid-body" id="calGrid"></div>
+          </div>
+
+          <div class="card day-detail-card">
+            <div class="day-detail-head">
+              <p class="day-detail-kicker" data-i18n="day.detailKicker">Day detail</p>
+              <h3 id="selectedDayLabel">Select a day</h3>
+              <time class="day-detail-date" id="selectedDayDate"></time>
+            </div>
+            <div class="day-detail-section">
+              <h4 data-i18n="day.tasks">Tasks</h4>
+              <ul class="mini-list" id="dayTasksList"></ul>
+              <p class="day-empty" id="dayTasksEmpty" data-i18n="day.noTasks">No tasks due this day.</p>
+            </div>
+            <div class="day-detail-section">
+              <h4 data-i18n="day.events">Events</h4>
+              <ul class="mini-list" id="dayEventsList"></ul>
+              <p class="day-empty" id="dayEventsEmpty" data-i18n="day.noEvents">No events this day.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view view-motivation" id="viewMotivation" hidden aria-labelledby="pageTitle">
+        <div class="motivation-grid">
+          <div class="card streak-hero">
+            <div class="streak-hero-head">
+              <span class="streak-flame" aria-hidden="true">🔥</span>
+              <div>
+                <h2 class="streak-hero-title" data-i18n="streak.title">Your streak</h2>
+                <p class="streak-hero-sub muted" data-i18n="streak.subtitle">Stay consistent with tasks and timed events.</p>
+              </div>
+            </div>
+            <div class="streak-stats">
+              <div class="streak-stat">
+                <span class="streak-stat-label" data-i18n="streak.current">Current streak</span>
+                <span class="streak-stat-value" id="streakCurrent">0</span>
+                <span class="streak-stat-unit" data-i18n="streak.days">days</span>
+              </div>
+              <div class="streak-stat">
+                <span class="streak-stat-label" data-i18n="streak.longest">Longest streak</span>
+                <span class="streak-stat-value" id="streakLongest">0</span>
+                <span class="streak-stat-unit" data-i18n="streak.days">days</span>
+              </div>
+            </div>
+            <div class="streak-today" id="streakTodayBadge">
+              <span class="badge badge-streak" id="streakTodayText">—</span>
+            </div>
+            <div class="streak-week" id="streakWeekDots" aria-hidden="true"></div>
+            <p class="streak-rule-hint muted" data-i18n="streak.ruleHint">A day counts when you complete a task or mark a timed event as done.</p>
+          </div>
+
+          <div class="card buddy-card" id="buddyCard">
+            <div class="buddy-card-head">
+              <span class="buddy-icon" aria-hidden="true">🤝</span>
+              <div>
+                <h2 data-i18n="buddy.title">Buddy streak</h2>
+                <p class="muted small" data-i18n="buddy.subtitle">Stay accountable together.</p>
+              </div>
+            </div>
+            <label class="field">
+              <span data-i18n="buddy.partnerName">Buddy name</span>
+              <input type="text" id="buddyNameInput" maxlength="80" data-i18n-placeholder="buddy.partnerPlaceholder" placeholder="Friend or teammate" autocomplete="off" />
+            </label>
+            <div class="buddy-stats">
+              <div>
+                <span class="muted small" data-i18n="buddy.together">Together</span>
+                <strong id="buddyStreakCurrent">0</strong>
+                <span class="muted small" data-i18n="streak.days">days</span>
+              </div>
+              <div>
+                <span class="muted small" data-i18n="buddy.best">Best</span>
+                <strong id="buddyStreakLongest">0</strong>
+              </div>
+            </div>
+            <p class="buddy-activity-label muted small" data-i18n="buddy.activityLabel">Today</p>
+            <div class="buddy-pills">
+              <span class="buddy-pill" id="buddyMeStatus">—</span>
+              <span class="buddy-pill" id="buddyPartnerStatus">—</span>
+            </div>
+            <label class="field checkbox-field buddy-toggle">
+              <input type="checkbox" id="buddyPartnerActiveToday" />
+              <span data-i18n="buddy.partnerActiveToday">My buddy was active today</span>
+            </label>
+            <p class="muted small buddy-hint" data-i18n="buddy.hint">Both of you need activity on the same day to grow the buddy streak. Your activity comes from completed tasks and timed events marked done.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="view view-selfcare" id="viewSelfcare" hidden aria-labelledby="pageTitle">
+        <div class="selfcare-layout">
+          <article class="card selfcare-sheet">
+            <header class="selfcare-sheet-head">
+              <p class="selfcare-kicker" data-i18n="selfcare.kicker">Daily journal</p>
+              <h2 data-i18n="selfcare.title">Self-Care Journal</h2>
+              <p class="muted selfcare-intro" data-i18n="selfcare.intro">A calm space for reflection. Capture what mattered today and revisit past entries any time.</p>
+            </header>
+
+            <div class="selfcare-meta-grid">
+              <label class="field" for="selfcareDate">
+                <span data-i18n="selfcare.dateLabel">Date</span>
+                <input type="date" id="selfcareDate" />
+              </label>
+              <div class="selfcare-sheet-tools">
+                <p class="muted small" id="selfcareStatus" data-i18n="selfcare.statusIdle">No changes yet.</p>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnSelfcareLoadDate" data-i18n="selfcare.loadDateBtn">Open selected date</button>
+              </div>
+            </div>
+
+            <div class="selfcare-questions" id="selfcareQuestions">
+              <label class="field selfcare-field" for="selfcareQGrateful">
+                <span data-i18n="selfcare.q.grateful">What are you grateful for today?</span>
+                <textarea id="selfcareQGrateful" rows="4" data-i18n-placeholder="selfcare.placeholder" placeholder="Write freely..."></textarea>
+              </label>
+              <label class="field selfcare-field" for="selfcareQSmile">
+                <span data-i18n="selfcare.q.smile">What made you smile today?</span>
+                <textarea id="selfcareQSmile" rows="4" data-i18n-placeholder="selfcare.placeholder" placeholder="Write freely..."></textarea>
+              </label>
+              <label class="field selfcare-field" for="selfcareQWentWell">
+                <span data-i18n="selfcare.q.well">What went well today?</span>
+                <textarea id="selfcareQWentWell" rows="4" data-i18n-placeholder="selfcare.placeholder" placeholder="Write freely..."></textarea>
+              </label>
+              <label class="field selfcare-field" for="selfcareQProud">
+                <span data-i18n="selfcare.q.proud">What are you proud of today?</span>
+                <textarea id="selfcareQProud" rows="4" data-i18n-placeholder="selfcare.placeholder" placeholder="Write freely..."></textarea>
+              </label>
+              <label class="field selfcare-field" for="selfcareQSelf">
+                <span data-i18n="selfcare.q.self">What did you appreciate about yourself today?</span>
+                <textarea id="selfcareQSelf" rows="4" data-i18n-placeholder="selfcare.placeholder" placeholder="Write freely..."></textarea>
+              </label>
+              <label class="field selfcare-field" for="selfcareQSurprise">
+                <span data-i18n="selfcare.q.surprise">What surprised you in a positive way today?</span>
+                <textarea id="selfcareQSurprise" rows="4" data-i18n-placeholder="selfcare.placeholder" placeholder="Write freely..."></textarea>
+              </label>
+            </div>
+
+            <footer class="selfcare-actions">
+              <button type="button" class="btn btn-primary" id="btnSaveSelfcare" data-i18n="selfcare.saveBtn">Save entry</button>
+              <button type="button" class="btn btn-ghost" id="btnSelfcareClear" data-i18n="selfcare.clearBtn">Clear form</button>
+            </footer>
+          </article>
+
+          <aside class="card selfcare-history-panel" aria-label="Saved journal entries">
+            <div class="selfcare-history-head">
+              <h3 data-i18n="selfcare.historyTitle">Saved entries</h3>
+              <p class="muted small" data-i18n="selfcare.historyHint">Newest first. Select a day to preview or edit.</p>
+            </div>
+            <ul class="selfcare-entry-list" id="selfcareEntriesList"></ul>
+            <p class="muted small selfcare-empty" id="selfcareEntriesEmpty" data-i18n="selfcare.historyPlaceholder">No saved entries yet</p>
+            <div class="selfcare-preview" id="selfcarePreview" hidden>
+              <p class="selfcare-preview-date" id="selfcarePreviewDate">—</p>
+              <p class="selfcare-preview-text" id="selfcarePreviewText">—</p>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnSelfcareEditPreview" data-i18n="selfcare.editBtn">Edit this entry</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view view-focus" id="viewFocus" hidden aria-labelledby="pageTitle">
+        <div class="focus-layout">
+          <article class="card focus-card focus-card--main">
+            <header class="focus-head">
+              <p class="focus-kicker" data-i18n="focus.kicker">Deep Focus</p>
+              <h2 data-i18n="focus.title">Focus Mode</h2>
+              <p class="muted focus-intro" data-i18n="focus.intro">Work deeply on one task, reduce noise, and finish intentional sessions.</p>
+            </header>
+
+            <div class="focus-grid">
+              <label class="field" for="focusTaskSelect">
+                <span data-i18n="focus.taskLabel">Task to focus on</span>
+                <select id="focusTaskSelect" class="input-select"></select>
+              </label>
+              <label class="field" for="focusCustomMinutes">
+                <span data-i18n="focus.durationLabel">Duration (minutes)</span>
+                <input type="number" id="focusCustomMinutes" min="1" max="240" value="25" />
+              </label>
+            </div>
+
+            <div class="focus-presets" id="focusPresetButtons">
+              <button type="button" class="btn btn-ghost btn-sm" data-focus-min="15">15m</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-focus-min="25">25m</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-focus-min="45">45m</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-focus-min="60">60m</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-focus-min="90">90m</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-focus-min="120">120m</button>
+            </div>
+
+            <section class="focus-active-task" id="focusActiveTask">
+              <p class="focus-active-label muted small" data-i18n="focus.currentTask">Current focus task</p>
+              <h3 id="focusTaskTitle">—</h3>
+              <p class="muted" id="focusTaskNotes"></p>
+              <p class="focus-guidance" id="focusGuidanceText">—</p>
+            </section>
+
+            <div class="focus-timer-block">
+              <div class="focus-timer-display" id="focusTimerDisplay" aria-live="polite">25:00</div>
+              <div class="focus-progress-track" aria-hidden="true">
+                <div class="focus-progress-fill" id="focusProgressFill" style="width:0%"></div>
+              </div>
+              <p class="muted small" id="focusRouteProgress">—</p>
+            </div>
+
+            <section class="focus-break" id="focusBreakPanel" hidden>
+              <p class="focus-break-kicker" data-i18n="focus.breakKicker">Recovery break</p>
+              <div class="focus-break-row">
+                <strong class="focus-break-time" id="focusBreakDisplay">05:00</strong>
+                <span class="muted small" id="focusBreakHint" data-i18n="focus.breakHint">Stand up, breathe, and reset your attention.</span>
+              </div>
+              <div class="focus-break-actions">
+                <button type="button" class="btn btn-primary btn-sm" id="btnBreakStart" data-i18n="focus.breakStart">Start break</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnBreakSkip" data-i18n="focus.breakSkip">Skip</button>
+              </div>
+            </section>
+
+            <footer class="focus-actions">
+              <button type="button" class="btn btn-primary" id="btnFocusStart" data-i18n="focus.start">Start</button>
+              <button type="button" class="btn btn-ghost" id="btnFocusPause" data-i18n="focus.pause">Pause</button>
+              <button type="button" class="btn btn-ghost" id="btnFocusResume" data-i18n="focus.resume">Resume</button>
+              <button type="button" class="btn btn-ghost danger-text" id="btnFocusEnd" data-i18n="focus.end">End</button>
+              <button type="button" class="btn btn-ghost" id="btnFocusFullscreen" data-i18n="focus.fullscreen">Fullscreen</button>
+            </footer>
+          </article>
+
+          <aside class="card focus-card focus-card--side">
+            <h3 data-i18n="focus.reduceTitle">Reduce distractions</h3>
+            <p class="muted small" data-i18n="focus.reduceHint">Web apps cannot block other system apps directly. Use this list as your intentional lock-in checklist.</p>
+            <div class="focus-distractions">
+              <label class="checkbox-field"><input type="checkbox" class="focus-distraction" value="instagram" /> <span>Instagram</span></label>
+              <label class="checkbox-field"><input type="checkbox" class="focus-distraction" value="tiktok" /> <span>TikTok</span></label>
+              <label class="checkbox-field"><input type="checkbox" class="focus-distraction" value="youtube" /> <span>YouTube</span></label>
+              <label class="checkbox-field"><input type="checkbox" class="focus-distraction" value="snapchat" /> <span>Snapchat</span></label>
+              <label class="checkbox-field"><input type="checkbox" class="focus-distraction" value="x" /> <span>X / Twitter</span></label>
+            </div>
+            <p class="muted small focus-ext-note" data-i18n="focus.extensionHint">Future-ready: this setup can be connected to a browser extension for real website blocking.</p>
+
+            <div class="focus-session-log">
+              <h4 data-i18n="focus.logTitle">Recent focus sessions</h4>
+              <ul id="focusSessionList"></ul>
+              <p class="muted small" id="focusSessionEmpty" data-i18n="focus.logEmpty">No sessions yet.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view view-achievements" id="viewAchievements" hidden aria-labelledby="pageTitle">
+        <div class="achievements-layout">
+          <article class="card achievements-head-card">
+            <p class="achievements-kicker" data-i18n="ach.kicker">Progress rewards</p>
+            <h2 data-i18n="ach.title">Achievements</h2>
+            <p class="muted achievements-intro" data-i18n="ach.intro">Unlock badges through real consistency: tasks, streaks, self-care, social progress, and long-term discipline.</p>
+            <div class="achievements-summary" id="achievementsSummary"></div>
+          </article>
+
+          <article class="card achievements-controls-card">
+            <div class="ach-filter-grid">
+              <label class="field" for="achFilterStatus">
+                <span data-i18n="ach.filter.status">Status</span>
+                <select id="achFilterStatus" class="input-select">
+                  <option value="all" data-i18n="ach.filter.all">All</option>
+                  <option value="unlocked" data-i18n="ach.filter.unlocked">Unlocked</option>
+                  <option value="locked" data-i18n="ach.filter.locked">Locked</option>
+                </select>
+              </label>
+              <label class="field" for="achFilterCategory">
+                <span data-i18n="ach.filter.category">Category</span>
+                <select id="achFilterCategory" class="input-select">
+                  <option value="all" data-i18n="ach.filter.allCategories">All categories</option>
+                </select>
+              </label>
+            </div>
+          </article>
+
+          <article class="achievements-grid" id="achievementsGrid"></article>
+          <p class="muted small achievements-empty" id="achievementsEmpty" data-i18n="ach.empty">No achievements match the current filter.</p>
+        </div>
+      </section>
+
+      <section class="view view-groups" id="viewGroups" hidden aria-labelledby="pageTitle">
+        <div class="groups-grid">
+          <div class="card groups-card groups-card--cta">
+            <h2 data-i18n="groups.createTitle">Create a group</h2>
+            <p class="muted small" data-i18n="groups.createHint">Get a code and link to invite others (stored on this device until you connect a server).</p>
+            <button type="button" class="btn btn-primary btn-block" id="btnOpenGroupCreateModal" data-i18n="groups.openCreateModal">Create group</button>
+          </div>
+          <div class="card groups-card">
+            <h2 data-i18n="groups.joinTitle">Join a group</h2>
+            <p class="muted small" data-i18n="groups.joinHint">Enter a code or use an invite link.</p>
+            <label class="field">
+              <span data-i18n="groups.codeLabel">Group code</span>
+              <input type="text" id="groupJoinCode" maxlength="12" data-i18n-placeholder="groups.joinPlaceholder" placeholder="ABC123" autocomplete="off" />
+            </label>
+            <button type="button" class="btn btn-ghost" id="btnJoinGroup" data-i18n="groups.joinBtn">Join with code</button>
+          </div>
+          <div class="card groups-card groups-detail" id="groupDetailCard">
+            <h2 data-i18n="groups.yourGroup">Your group</h2>
+            <div id="groupDetailEmpty" class="muted" data-i18n="groups.noGroup">You are not in a group yet.</div>
+            <div id="groupDetailBody" hidden>
+              <p class="group-detail-name"><strong id="groupDetailName">—</strong></p>
+              <div class="group-code-row">
+                <span class="muted small" data-i18n="groups.codeLabel">Group code</span>
+                <code class="group-code" id="groupDetailCode">—</code>
+                <button type="button" class="btn-text" id="btnCopyGroupCode" data-i18n="groups.copyCode">Copy</button>
+              </div>
+              <div class="group-link-row">
+                <span class="muted small" data-i18n="groups.inviteLink">Invite link</span>
+                <div class="group-link-wrap">
+                  <input type="text" readonly class="input-text-mono" id="groupInviteLink" value="" dir="ltr" />
+                  <button type="button" class="btn btn-ghost btn-sm" id="btnCopyInviteLink" data-i18n="groups.copyLink">Copy link</button>
+                </div>
+              </div>
+              <h3 class="group-ranking-heading" data-i18n="groups.rankingTitle">Monthly ranking</h3>
+              <p class="muted small group-ranking-period" id="groupRankingMonth"></p>
+              <p class="group-ranking-you" id="groupRankingYou" hidden></p>
+              <ul class="group-ranking" id="groupRankingList" aria-label="Group ranking"></ul>
+              <p class="muted small group-ranking-hint" data-i18n="groups.rankingHint"></p>
+              <button type="button" class="btn btn-ghost danger-text" id="btnLeaveGroup" data-i18n="groups.leave">Leave group</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+  <!-- Welcome (after cookie consent; once per browser session) -->
+  <div class="welcome-overlay" id="welcomeOverlay" hidden aria-hidden="true">
+    <div class="welcome-overlay-backdrop" id="welcomeOverlayBackdrop" tabindex="-1"></div>
+    <div
+      class="welcome-card"
+      id="welcomeCard"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="welcomeKicker"
+      aria-describedby="welcomeMessage"
+    >
+      <button type="button" class="welcome-close" id="welcomeClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+      <div class="welcome-card-body">
+        <div class="welcome-mascot-column" aria-hidden="true">
+          <div class="welcome-mascot-bloom" aria-hidden="true"></div>
+          <div class="welcome-mascot-figure">
+            <svg class="welcome-mascot-svg" viewBox="0 0 72 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="36" cy="128" rx="22" ry="5" fill="currentColor" opacity="0.12"/>
+              <path d="M36 18c-9 0-16 7-16 16v6c0 5 3 9 7 11-1 2-1 4-1 6v22c0 6 5 11 11 11h16c6 0 11-5 11-11V57c0-2 0-4-1-6 4-2 7-6 7-11v-6c0-9-7-16-16-16z" fill="url(#wm-body-flow)" stroke="currentColor" stroke-width="1.2" stroke-opacity="0.2"/>
+              <circle cx="36" cy="22" r="14" fill="url(#wm-head-flow)" stroke="currentColor" stroke-width="1.2" stroke-opacity="0.18"/>
+              <ellipse cx="30" cy="21" rx="2.2" ry="2.6" fill="currentColor" opacity="0.35"/>
+              <ellipse cx="42" cy="21" rx="2.2" ry="2.6" fill="currentColor" opacity="0.35"/>
+              <path d="M30 28c3 3 10 3 12 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.4"/>
+              <path d="M22 52c-6 0-10 5-10 11v18c0 4 3 7 7 7h6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.25"/>
+              <path d="M50 52c6 0 10 5 10 11v18c0 4-3 7-7 7h-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.25"/>
+              <path d="M36 8v-4M28 12l-3-3M44 12l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.35"/>
+              <defs>
+                <linearGradient id="wm-head-flow" x1="22" y1="10" x2="50" y2="36" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="var(--accent)"/>
+                  <stop offset="1" stop-color="var(--brand-icon)"/>
+                </linearGradient>
+                <linearGradient id="wm-body-flow" x1="20" y1="40" x2="52" y2="120" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="var(--accent-soft)"/>
+                  <stop offset="1" stop-color="var(--bg-card)"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+        </div>
+        <div class="welcome-copy-column">
+          <p class="welcome-kicker" id="welcomeKicker" data-i18n="welcome.kicker">Welcome</p>
+          <p class="welcome-message" id="welcomeMessage"></p>
+          <button type="button" class="btn btn-primary welcome-continue" id="welcomeContinue" data-i18n="welcome.continue">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cookie consent bar -->
+  <div class="cookie-bar" id="cookieBar" hidden role="dialog" aria-labelledby="cookieBarTitle" aria-modal="false">
+    <div class="cookie-bar-inner">
+      <div class="cookie-bar-text">
+        <strong id="cookieBarTitle" data-i18n="cookie.title">Cookies & privacy</strong>
+        <p class="muted small cookie-bar-desc" data-i18n="cookie.description">We use necessary cookies to run the app. Optional analytics and marketing cookies are only enabled with your consent.</p>
+      </div>
+      <div class="cookie-bar-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="cookieAcceptAll" data-i18n="cookie.acceptAll">Accept all</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="cookieNecessaryOnly" data-i18n="cookie.necessaryOnly">Necessary only</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="cookieOpenSettings" data-i18n="cookie.settings">Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cookie settings -->
+  <div class="modal-backdrop" id="cookieSettingsBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal modal--cookie" id="cookieSettingsModal" role="dialog" aria-modal="true" aria-labelledby="cookieSettingsTitle" hidden aria-hidden="true">
+    <div class="modal-card modal-card--cookie">
+      <header class="modal-head">
+        <h2 id="cookieSettingsTitle" data-i18n="cookie.settingsTitle">Cookie preferences</h2>
+        <button type="button" class="modal-close" id="cookieSettingsClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+      </header>
+      <div class="modal-body">
+        <p class="muted small" data-i18n="cookie.settingsIntro">Choose which cookies we may use. Necessary cookies are always on.</p>
+        <ul class="cookie-list">
+          <li class="cookie-item">
+            <div>
+              <strong data-i18n="cookie.catNecessary">Necessary</strong>
+              <p class="muted small" data-i18n="cookie.catNecessaryDesc">Session, language, and app preferences. Required for the app to work.</p>
+            </div>
+            <span class="cookie-badge" data-i18n="cookie.alwaysOn">Always on</span>
+          </li>
+          <li class="cookie-item">
+            <label class="cookie-toggle">
+              <input type="checkbox" id="cookieToggleAnalytics" />
+              <span>
+                <strong data-i18n="cookie.catAnalytics">Analytics</strong>
+                <span class="muted small" data-i18n="cookie.catAnalyticsDesc">Anonymous usage to improve the product.</span>
+              </span>
+            </label>
+          </li>
+          <li class="cookie-item">
+            <label class="cookie-toggle">
+              <input type="checkbox" id="cookieToggleMarketing" />
+              <span>
+                <strong data-i18n="cookie.catMarketing">Marketing</strong>
+                <span class="muted small" data-i18n="cookie.catMarketingDesc">Personalized content and campaigns (if you enable this later).</span>
+              </span>
+            </label>
+          </li>
+        </ul>
+        <footer class="modal-foot">
+          <button type="button" class="btn btn-primary" id="cookieSettingsSave" data-i18n="cookie.savePrefs">Save preferences</button>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Privacy / Terms -->
+  <div class="modal-backdrop" id="legalModalBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal modal--legal" id="legalModal" role="dialog" aria-modal="true" aria-labelledby="legalModalTitle" hidden aria-hidden="true">
+    <div class="modal-card modal-card--legal">
+      <header class="modal-head">
+        <h2 id="legalModalTitle" data-i18n="auth.privacy">Privacy policy</h2>
+        <button type="button" class="modal-close" id="legalModalClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+      </header>
+      <div class="modal-body legal-body" id="legalModalBody"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Create group -->
+  <div class="modal-backdrop" id="groupCreateModalBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal modal--group-create" id="groupCreateModal" role="dialog" aria-modal="true" aria-labelledby="groupCreateModalTitle" hidden aria-hidden="true">
+    <div class="modal-card modal-card--group">
+      <header class="modal-head">
+        <h2 id="groupCreateModalTitle" data-i18n="groups.modalTitle">Create group</h2>
+        <button type="button" class="modal-close" id="groupCreateModalClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+      </header>
+      <form id="groupCreateForm" class="modal-body">
+        <div id="groupCreateStepForm">
+          <p class="muted small" data-i18n="groups.modalHint">Choose a name. You will get a unique code and invite link.</p>
+          <label class="field">
+            <span data-i18n="groups.nameLabel">Group name</span>
+            <input type="text" id="groupModalName" maxlength="80" required data-i18n-placeholder="groups.namePlaceholder" placeholder="Study crew" autocomplete="off" />
+          </label>
+          <footer class="modal-foot">
+            <button type="button" class="btn btn-ghost" id="groupCreateModalCancel" data-i18n="common.cancel">Cancel</button>
+            <div class="modal-foot-spacer"></div>
+            <button type="submit" class="btn btn-primary" data-i18n="groups.createBtn">Create group</button>
+          </footer>
+        </div>
+        <div id="groupCreateStepSuccess" hidden>
+          <p class="group-success-title" data-i18n="groups.createdReady">Your group is ready</p>
+          <div class="field">
+            <span data-i18n="groups.codeLabel">Group code</span>
+            <div class="group-success-code-row">
+              <code class="group-code group-code--large" id="groupModalSuccessCode">—</code>
+              <button type="button" class="btn btn-ghost btn-sm" id="groupModalCopyCode" data-i18n="groups.copyCode">Copy</button>
+            </div>
+          </div>
+          <div class="field">
+            <span data-i18n="groups.inviteLink">Invite link</span>
+            <input type="text" readonly class="input-text-mono" id="groupModalSuccessLink" dir="ltr" value="" />
+          </div>
+          <p class="settings-sub" data-i18n="groups.shareLabel">Share</p>
+          <div class="share-grid" role="group">
+            <button type="button" class="share-btn" data-share="whatsapp" id="shareWhatsapp">
+              <span class="share-btn-icon" aria-hidden="true">WA</span>
+              <span data-i18n="share.whatsapp">WhatsApp</span>
+            </button>
+            <button type="button" class="share-btn" data-share="facebook" id="shareFacebook">
+              <span class="share-btn-icon" aria-hidden="true">f</span>
+              <span data-i18n="share.facebook">Facebook</span>
+            </button>
+            <button type="button" class="share-btn" data-share="sms" id="shareSms">
+              <span class="share-btn-icon" aria-hidden="true">SMS</span>
+              <span data-i18n="share.sms">SMS</span>
+            </button>
+            <button type="button" class="share-btn" data-share="instagram" id="shareInstagram">
+              <span class="share-btn-icon" aria-hidden="true">IG</span>
+              <span data-i18n="share.instagram">Instagram</span>
+            </button>
+            <button type="button" class="share-btn share-btn--wide" data-share="native" id="shareNative">
+              <span data-i18n="share.system">Share…</span>
+            </button>
+            <button type="button" class="share-btn share-btn--wide" data-share="copy" id="shareCopyCombined">
+              <span data-i18n="share.copyAll">Copy code &amp; link</span>
+            </button>
+          </div>
+          <p class="muted small share-fallback-hint" id="shareFallbackHint" hidden data-i18n="share.instagramHint">Copy the link and paste it in Instagram.</p>
+          <footer class="modal-foot">
+            <button type="button" class="btn btn-primary btn-block" id="groupCreateDoneBtn" data-i18n="groups.done">Done</button>
+          </footer>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="modal-backdrop" id="settingsModalBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal modal--settings" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle" hidden aria-hidden="true">
+    <div class="modal-card modal-card--settings">
+      <header class="modal-head">
+        <h2 id="settingsModalTitle" data-i18n="settings.title">Settings</h2>
+        <button type="button" class="modal-close" id="settingsModalClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+      </header>
+      <div class="modal-body settings-body">
+        <div class="settings-layout">
+          <nav class="settings-nav" id="settingsNav" role="tablist" data-i18n-aria="settings.navAria" aria-label="Settings sections">
+            <button type="button" class="settings-nav-btn settings-nav-btn--active" role="tab" id="tab-settings-account" aria-selected="true" aria-controls="settings-section-account" data-settings-jump="settings-section-account" data-i18n="settings.nav.account">Account</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-notifications" aria-selected="false" aria-controls="settings-section-notifications" data-settings-jump="settings-section-notifications" data-i18n="settings.nav.notifications">Notifications</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-language" aria-selected="false" aria-controls="settings-section-language" data-settings-jump="settings-section-language" data-i18n="settings.nav.language">Language</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-appearance" aria-selected="false" aria-controls="settings-section-appearance" data-settings-jump="settings-section-appearance" data-i18n="settings.nav.appearance">Appearance</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-privacy" aria-selected="false" aria-controls="settings-section-privacy" data-settings-jump="settings-section-privacy" data-i18n="settings.nav.privacy">Privacy</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-groups" aria-selected="false" aria-controls="settings-section-groups" data-settings-jump="settings-section-groups" data-i18n="settings.nav.groups">Groups</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-streak" aria-selected="false" aria-controls="settings-section-streak" data-settings-jump="settings-section-streak" data-i18n="settings.nav.streak">Goals</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-recap" aria-selected="false" aria-controls="settings-section-recap" data-settings-jump="settings-section-recap" data-i18n="settings.nav.recap">Statistics</button>
+            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-general" aria-selected="false" aria-controls="settings-section-general" data-settings-jump="settings-section-general" data-i18n="settings.nav.general">General</button>
+          </nav>
+          <div class="settings-content-scroll" id="settingsContentScroll">
+            <section class="settings-section settings-panel" id="settings-section-account" role="tabpanel" aria-labelledby="settingsAccountHeading">
+              <h3 class="settings-section-title" id="settingsAccountHeading" data-i18n="account.title">Account</h3>
+              <p class="settings-hint" data-i18n="settings.accountProfileHint">Sign-in, avatar, and display name.</p>
+              <p class="account-email" id="accountSignedInLabel"></p>
+              <button type="button" class="btn btn-ghost btn-block" id="btnSettingsChangePassword" data-i18n="settings.changePassword">Change password</button>
+              <div class="settings-divider"></div>
+              <p class="settings-sub" data-i18n="settings.avatarLabel">Profile picture</p>
+              <div class="avatar-current" id="avatarCurrentBlock">
+                <div class="avatar-preview-wrap">
+                  <div class="avatar avatar--xl avatar--settings-preview" id="settingsAvatarPreview" role="img" aria-hidden="true"></div>
+                </div>
+              </div>
+              <p class="settings-sub settings-sub--picker" id="settingsAvatarChooseLabel" data-i18n="settings.avatarChoosePreset">Choose a character</p>
+              <div class="avatar-picker-panel">
+                <div class="avatar-picker" id="avatarPicker" role="group" aria-labelledby="settingsAvatarChooseLabel"></div>
+                <input type="file" id="avatarFileInput" accept="image/*" class="visually-hidden" tabindex="-1" />
+              </div>
+              <button type="button" class="btn btn-ghost btn-block btn-upload" id="btnAvatarUpload" data-i18n="settings.avatarUpload">Upload photo</button>
+              <label class="field" for="profileDisplayName">
+                <span data-i18n="settings.displayName">Display name</span>
+                <input type="text" id="profileDisplayName" maxlength="80" data-i18n-placeholder="settings.displayNamePlaceholder" placeholder="Your name" autocomplete="name" />
+              </label>
+              <div class="settings-divider"></div>
+              <button type="button" class="btn btn-primary btn-block" id="btnLogout" data-i18n="account.logout">Log out</button>
+              <button type="button" class="btn btn-ghost danger-text btn-block" id="btnDeleteAccount" data-i18n="account.deleteAccount">Delete account…</button>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-notifications" role="tabpanel" aria-labelledby="settingsRemindHeading" hidden>
+              <h3 class="settings-section-title" id="settingsRemindHeading" data-i18n="settings.reminders">Notifications</h3>
+              <p class="settings-hint" data-i18n="settings.remindersHint">In-app and optional browser notifications.</p>
+              <label class="settings-row settings-row--toggle">
+                <div>
+                  <span class="settings-row-label" data-i18n="settings.masterNotifications">All notifications</span>
+                </div>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefNotifMaster" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <div>
+                  <span class="settings-row-label" data-i18n="settings.remindEvents">Event reminders</span>
+                </div>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefRemindEvents" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <div>
+                  <span class="settings-row-label" data-i18n="settings.remindTasks">Tasks due today</span>
+                </div>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefRemindTasks" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="field settings-field-tight" for="prefReminderLead">
+                <span data-i18n="settings.reminderLead">Remind before events</span>
+                <span class="muted small settings-field-desc" data-i18n="settings.reminderLeadHint">Lead time</span>
+                <select id="prefReminderLead" class="input-select">
+                  <option value="5">5 min</option>
+                  <option value="10">10 min</option>
+                  <option value="15">15 min</option>
+                  <option value="30">30 min</option>
+                  <option value="60">1 h</option>
+                </select>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <div>
+                  <span class="settings-row-label" data-i18n="settings.dailyOpenTasks">Daily open-task reminder</span>
+                  <span class="muted small settings-row-desc" data-i18n="settings.dailyOpenTasksHint">At the set time</span>
+                </div>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefDailyOpenTasks" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <div class="settings-inline-time">
+                <label class="field" for="prefDailyHour">
+                  <span data-i18n="settings.dailyTime">Time</span>
+                  <input type="number" id="prefDailyHour" class="input-num" min="0" max="23" value="9" />
+                </label>
+                <span class="settings-time-sep">:</span>
+                <label class="field" for="prefDailyMinute">
+                  <span class="visually-hidden">Minute</span>
+                  <input type="number" id="prefDailyMinute" class="input-num" min="0" max="59" value="0" />
+                </label>
+              </div>
+              <div class="settings-control settings-remind-actions">
+                <button type="button" class="btn btn-primary" id="btnRequestNotifications" data-i18n="settings.enableNotifications">Enable notifications</button>
+                <span class="settings-remind-status muted small" id="notificationStatus"></span>
+              </div>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-language" role="tabpanel" aria-labelledby="settingsLangHeading" hidden>
+              <h3 class="settings-section-title" id="settingsLangHeading" data-i18n="settings.language">Language</h3>
+              <p class="settings-hint" id="settingsLangHint" data-i18n="settings.languageHint">Choose the interface language.</p>
+              <label class="field" for="languageSelect">
+                <span data-i18n="settings.languageLabel">App language</span>
+                <select id="languageSelect" name="app-language" class="input-select input-select--language" autocomplete="off" aria-describedby="settingsLangHint">
+                  <option value="de">Deutsch</option>
+                  <option value="en">English</option>
+                  <option value="es">Español</option>
+                  <option value="it">Italiano</option>
+                  <option value="tr">Türkçe</option>
+                  <option value="ar">العربية</option>
+                </select>
+              </label>
+              <label class="field" for="prefTimeFormat">
+                <span data-i18n="settings.timeFormat">Time format</span>
+                <select id="prefTimeFormat" class="input-select">
+                  <option value="24" data-i18n="settings.time24">24-hour</option>
+                  <option value="12" data-i18n="settings.time12">12-hour</option>
+                </select>
+              </label>
+              <label class="field" for="prefDateStyle">
+                <span data-i18n="settings.dateStyle">Date display</span>
+                <select id="prefDateStyle" class="input-select">
+                  <option value="locale" data-i18n="settings.dateLocale">Locale</option>
+                  <option value="iso" data-i18n="settings.dateIso">ISO</option>
+                  <option value="dmy" data-i18n="settings.dateDmy">DD.MM.YYYY</option>
+                </select>
+              </label>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-appearance" role="tabpanel" aria-labelledby="settingsAppearanceHeading" hidden>
+              <h3 class="settings-section-title" id="settingsAppearanceHeading" data-i18n="settings.nav.appearance">Appearance</h3>
+              <p class="settings-hint" data-i18n="settings.theme">Theme</p>
+              <div class="settings-theme-radios" role="radiogroup" aria-label="Theme">
+                <label class="settings-radio-card">
+                  <input type="radio" name="settingsThemeMode" value="light" />
+                  <span data-i18n="settings.themeLight">Light</span>
+                </label>
+                <label class="settings-radio-card">
+                  <input type="radio" name="settingsThemeMode" value="dark" />
+                  <span data-i18n="settings.themeDark">Dark</span>
+                </label>
+                <label class="settings-radio-card">
+                  <input type="radio" name="settingsThemeMode" value="system" />
+                  <span data-i18n="settings.themeSystem">System</span>
+                </label>
+              </div>
+              <label class="field" for="prefAccent">
+                <span data-i18n="settings.accent">Accent</span>
+                <select id="prefAccent" class="input-select">
+                  <option value="default" data-i18n="settings.accentDefault">Default</option>
+                  <option value="ocean" data-i18n="settings.accentOcean">Ocean</option>
+                  <option value="rose" data-i18n="settings.accentRose">Rose</option>
+                  <option value="mint" data-i18n="settings.accentMint">Mint</option>
+                  <option value="amber" data-i18n="settings.accentAmber">Amber</option>
+                </select>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.animations">Animations</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefAnimations" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.reduceMotion">Reduce motion</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefReduceMotion" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-privacy" role="tabpanel" aria-labelledby="settingsPrivacyHeading" hidden>
+              <h3 class="settings-section-title" id="settingsPrivacyHeading" data-i18n="settings.privacyTitle">Privacy &amp; security</h3>
+              <p class="settings-hint" data-i18n="settings.privacyIntro">What we store locally.</p>
+              <p class="muted small" data-i18n="settings.securityHint">Security note.</p>
+              <button type="button" class="btn btn-ghost btn-block" id="btnCookiePrefs" data-i18n="settings.openCookies">Cookie preferences</button>
+              <button type="button" class="btn btn-ghost btn-block" id="btnOpenPrivacyFromSettings" data-i18n="auth.privacy">Privacy policy</button>
+              <button type="button" class="btn btn-ghost btn-block" id="btnOpenTermsFromSettings" data-i18n="auth.terms">Terms of use</button>
+              <button type="button" class="btn btn-ghost danger-text btn-block" id="btnSettingsClearData" data-i18n="settings.clearData">Clear app data</button>
+              <p class="muted small settings-footnote" data-i18n="settings.clearDataHint">Removes tasks and events…</p>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-groups" role="tabpanel" aria-labelledby="settingsGroupsHeading" hidden>
+              <h3 class="settings-section-title" id="settingsGroupsHeading" data-i18n="settings.nav.groups">Groups</h3>
+              <p class="settings-hint" data-i18n="settings.groupsIntro">Active group</p>
+              <div id="settingsGroupEmpty" class="muted" data-i18n="groups.noGroup">No group</div>
+              <div id="settingsGroupBody" hidden>
+                <p class="group-detail-name"><strong id="settingsGroupName">—</strong></p>
+                <div class="group-code-row">
+                  <span class="muted small" data-i18n="groups.codeLabel">Code</span>
+                  <code class="group-code" id="settingsGroupCode">—</code>
+                  <button type="button" class="btn-text" id="btnSettingsCopyCode" data-i18n="settings.copyCode">Copy</button>
+                </div>
+                <div class="group-link-row">
+                  <span class="muted small" data-i18n="groups.inviteLink">Link</span>
+                  <div class="group-link-wrap">
+                    <input type="text" readonly class="input-text-mono" id="settingsGroupLink" value="" dir="ltr" />
+                    <button type="button" class="btn btn-ghost btn-sm" id="btnSettingsCopyLink" data-i18n="settings.copyInviteLink">Copy link</button>
+                  </div>
+                </div>
+                <p class="settings-sub" data-i18n="groups.members">Members</p>
+                <ul class="settings-members-list" id="settingsGroupMembers"></ul>
+                <div class="settings-groups-actions">
+                  <button type="button" class="btn btn-ghost" id="btnSettingsManageGroup" data-i18n="settings.manageInGroups">Open Groups</button>
+                  <button type="button" class="btn btn-ghost danger-text" id="btnSettingsLeaveGroup" data-i18n="settings.leaveGroupBtn">Leave</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-streak" role="tabpanel" aria-labelledby="settingsStreakHeading" hidden>
+              <h3 class="settings-section-title" id="settingsStreakHeading" data-i18n="settings.nav.streak">Goals &amp; streak</h3>
+              <p class="settings-hint" data-i18n="settings.streakSectionHint">Streak rules</p>
+              <p class="muted small settings-rule-text" id="settingsStreakRuleText"></p>
+              <label class="field" for="prefStreakMin">
+                <span data-i18n="settings.minTasksPerDay">Min tasks / day</span>
+                <select id="prefStreakMin" class="input-select">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="5">5</option>
+                  <option value="10">10</option>
+                </select>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.streakNudge">Evening nudge</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefStreakNudge" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.buddyCardToggle">Buddy card</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefBuddyCard" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-recap" role="tabpanel" aria-labelledby="settingsRecapHeading" hidden>
+              <h3 class="settings-section-title" id="settingsRecapHeading" data-i18n="settings.nav.recap">Statistics</h3>
+              <p class="settings-hint" data-i18n="settings.recapSectionHint">Recap</p>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.recapWeek">Week recap</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefRecapWeek" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.recapMonth">Month recap</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefRecapMonth" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <p class="muted small" data-i18n="calendar.recapHint">Recap measures days with due tasks…</p>
+            </section>
+
+            <section class="settings-section settings-panel" id="settings-section-general" role="tabpanel" aria-labelledby="settingsGeneralHeading" hidden>
+              <h3 class="settings-section-title" id="settingsGeneralHeading" data-i18n="settings.nav.general">General</h3>
+              <p class="settings-hint" data-i18n="settings.generalHint">Sounds and defaults</p>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.soundsLabel">Sounds</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefSounds" />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="field" for="prefDefaultView">
+                <span data-i18n="settings.defaultStart">Default view</span>
+                <select id="prefDefaultView" class="input-select">
+                  <option value="dashboard" data-i18n="nav.dashboard">Dashboard</option>
+                  <option value="calendar" data-i18n="nav.calendar">Calendar</option>
+                  <option value="tasks" data-i18n="nav.tasks">Tasks</option>
+                  <option value="selfcare" data-i18n="nav.selfcare">Self-Care</option>
+                  <option value="focus" data-i18n="nav.focus">Focus</option>
+                  <option value="achievements" data-i18n="nav.achievements">Achievements</option>
+                  <option value="groups" data-i18n="nav.groups">Groups</option>
+                  <option value="motivation" data-i18n="nav.motivation">Motivation</option>
+                </select>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.welcomeToggle">Welcome</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefWelcome" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="settings-row settings-row--toggle">
+                <span class="settings-row-label" data-i18n="settings.coachToggle">Coach</span>
+                <span class="settings-toggle-cell">
+                  <input type="checkbox" class="settings-switch-input" id="prefCoach" checked />
+                  <span class="settings-switch" aria-hidden="true"></span>
+                </span>
+              </label>
+              <button type="button" class="btn btn-ghost danger-text btn-block" id="btnSettingsResetGeneral" data-i18n="settings.resetApp">Reset app data</button>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Task -->
+  <div class="modal-backdrop" id="taskModalBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal" id="taskModal" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle" hidden aria-hidden="true">
+    <div class="modal-card">
+      <header class="modal-head">
+        <h2 id="taskModalTitle">New task</h2>
+        <button type="button" class="modal-close" id="taskModalClose" data-i18n-aria="aria.closeDialog" aria-label="Close dialog">&times;</button>
+      </header>
+      <form id="taskForm" class="modal-body">
+        <input type="hidden" id="taskId" />
+        <label class="field">
+          <span data-i18n="taskModal.titleLabel">Title</span>
+          <input type="text" id="taskTitle" required maxlength="200" data-i18n-placeholder="taskModal.placeholderTitle" placeholder="What needs to be done?" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span data-i18n="taskModal.notesLabel">Notes (optional)</span>
+          <textarea id="taskNotes" rows="3" maxlength="2000" data-i18n-placeholder="taskModal.placeholderNotes" placeholder="Add context or links…"></textarea>
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span data-i18n="taskModal.priorityLabel">Priority</span>
+            <select id="taskPriority" class="input-select">
+              <option value="low" data-i18n="priority.low">Low</option>
+              <option value="medium" data-i18n="priority.medium" selected>Medium</option>
+              <option value="high" data-i18n="priority.high">High</option>
+            </select>
+          </label>
+          <label class="field">
+            <span data-i18n="taskModal.dueLabel">Due date (optional)</span>
+            <input type="date" id="taskDue" />
+          </label>
+        </div>
+        <label class="field checkbox-field">
+          <input type="checkbox" id="taskCompleted" />
+          <span data-i18n="taskModal.completedLabel">Mark as completed</span>
+        </label>
+        <footer class="modal-foot">
+          <button type="button" class="btn btn-ghost" id="taskDelete" hidden data-i18n="common.delete">Delete</button>
+          <div class="modal-foot-spacer"></div>
+          <button type="button" class="btn btn-ghost" id="taskCancel" data-i18n="common.cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" data-i18n="common.save">Save</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Event -->
+  <div class="modal-backdrop" id="eventModalBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal" id="eventModal" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle" hidden aria-hidden="true">
+    <div class="modal-card modal-card--event">
+      <header class="modal-head modal-head--event">
+        <div class="modal-head-event-text">
+          <p class="event-modal-kicker" data-i18n="eventModal.kicker">Scheduled event</p>
+          <h2 id="eventModalTitle">New event</h2>
+        </div>
+        <button type="button" class="modal-close" id="eventModalClose" data-i18n-aria="aria.closeDialog" aria-label="Close dialog">&times;</button>
+      </header>
+      <form id="eventForm" class="modal-body modal-body--event">
+        <input type="hidden" id="eventId" />
+        <label class="field">
+          <span data-i18n="eventModal.titleLabel">Title</span>
+          <input type="text" id="eventTitle" required maxlength="200" data-i18n-placeholder="eventModal.placeholderTitle" placeholder="Meeting, workout, …" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span data-i18n="eventModal.dateLabel">Date</span>
+          <input type="date" id="eventDate" required />
+        </label>
+        <div class="event-time-panel" id="eventTimePanel">
+          <div class="event-time-panel-head">
+            <span class="event-time-panel-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>
+            </span>
+            <div>
+              <span class="event-time-panel-title" data-i18n="eventModal.timeSection">Time</span>
+              <p class="muted small event-time-panel-hint" data-i18n="eventModal.timeHint">Set a start time. End time is optional.</p>
+            </div>
+          </div>
+          <label class="field checkbox-field event-all-day-row">
+            <input type="checkbox" id="eventAllDay" />
+            <span data-i18n="eventModal.allDay">All day</span>
+          </label>
+          <div class="field-row time-row" id="eventTimeRow">
+            <div class="field">
+              <span id="labelEventStart" data-i18n="eventModal.start">Start</span>
+              <div class="event-time-picker" role="group" aria-labelledby="labelEventStart">
+                <select id="eventStartHour" class="input-select event-time-select" aria-describedby="labelEventStart"></select>
+                <span class="event-time-colon" aria-hidden="true">:</span>
+                <select id="eventStartMin" class="input-select event-time-select" aria-label="Minutes"></select>
+              </div>
+            </div>
+            <div class="field">
+              <span id="labelEventEnd"><span data-i18n="eventModal.end">End</span> <span class="muted small" data-i18n="eventModal.endOptional">(optional)</span></span>
+              <div class="event-time-picker" role="group" aria-labelledby="labelEventEnd">
+                <select id="eventEndHour" class="input-select event-time-select"></select>
+                <span class="event-time-colon" aria-hidden="true">:</span>
+                <select id="eventEndMin" class="input-select event-time-select"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <label class="field">
+          <span data-i18n="eventModal.notesLabel">Notes (optional)</span>
+          <textarea id="eventNotes" rows="2" maxlength="2000" data-i18n-placeholder="eventModal.placeholderNotes"></textarea>
+        </label>
+        <label class="field">
+          <span data-i18n="eventModal.colorLabel">Color</span>
+          <select id="eventColor" class="input-select">
+            <option value="rose" data-i18n="color.rose">Rose</option>
+            <option value="violet" data-i18n="color.violet">Violet</option>
+            <option value="sky" data-i18n="color.sky">Sky</option>
+            <option value="mint" data-i18n="color.mint">Mint</option>
+            <option value="amber" data-i18n="color.amber">Amber</option>
+          </select>
+        </label>
+        <label class="field checkbox-field" id="eventStreakRow" hidden>
+          <input type="checkbox" id="eventStreakDone" />
+          <span data-i18n="eventModal.streakDone">Mark as done for streak (timed event)</span>
+        </label>
+        <footer class="modal-foot">
+          <button type="button" class="btn btn-ghost" id="eventDelete" hidden data-i18n="common.delete">Delete</button>
+          <div class="modal-foot-spacer"></div>
+          <button type="button" class="btn btn-ghost" id="eventCancel" data-i18n="common.cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" data-i18n="common.save">Save</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Calendar goal recap -->
+  <div class="modal-backdrop" id="calendarRecapBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal modal--calendar-recap" id="calendarRecapModal" role="dialog" aria-modal="true" aria-labelledby="calendarRecapTitle" hidden aria-hidden="true">
+    <div class="modal-card modal-card--recap">
+      <header class="modal-head">
+        <h2 id="calendarRecapTitle" data-i18n="calendar.recapTitle">Goal recap</h2>
+        <button type="button" class="modal-close" id="calendarRecapClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+      </header>
+      <div class="modal-body recap-body">
+        <div class="segmented recap-segments" role="group" aria-label="Recap period">
+          <button type="button" class="segment active" data-recap-mode="week" id="recapSegWeek" data-i18n="calendar.recapWeek">Week</button>
+          <button type="button" class="segment" data-recap-mode="month" id="recapSegMonth" data-i18n="calendar.recapMonth">Month</button>
+        </div>
+        <p class="recap-period muted small" id="recapPeriodLabel"></p>
+        <div class="recap-stats">
+          <div class="recap-stat recap-stat--success">
+            <span class="recap-stat-label" data-i18n="calendar.recapSuccess">Successful days</span>
+            <span class="recap-stat-value" id="recapValSuccess">0</span>
+          </div>
+          <div class="recap-stat recap-stat--fail">
+            <span class="recap-stat-label" data-i18n="calendar.recapFail">Incomplete days</span>
+            <span class="recap-stat-value" id="recapValFail">0</span>
+          </div>
+          <div class="recap-stat recap-stat--rate">
+            <span class="recap-stat-label" data-i18n="calendar.recapRate">Success rate</span>
+            <span class="recap-stat-value" id="recapValRate">—</span>
+          </div>
+        </div>
+        <div class="recap-bar-wrap" aria-hidden="true">
+          <div class="recap-bar" id="recapBar">
+            <div class="recap-bar-seg recap-bar-seg--success" id="recapBarSuccess" style="width: 0%"></div>
+            <div class="recap-bar-seg recap-bar-seg--fail" id="recapBarFail" style="width: 0%"></div>
+          </div>
+        </div>
+        <p class="recap-hint muted small" data-i18n="calendar.recapHint"></p>
+        <p class="recap-persist muted small" data-i18n="calendar.recapPersistHint"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+</body>
+</html>

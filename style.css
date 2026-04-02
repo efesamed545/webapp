@@ -275,8 +275,8 @@ textarea {
   height: 44px;
   padding: 0;
   border-radius: 50%;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
+  background: transparent;
+border: none;
   cursor: pointer;
   overflow: hidden;
   transition: transform var(--transition), box-shadow var(--transition);

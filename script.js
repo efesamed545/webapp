@@ -84,6 +84,9 @@ async function loadUserProfile() {
   if (els.sidebarUserName) {
     els.sidebarUserName.textContent = data.full_name || data.email || "You";
   }
+  if (els.sidebarAvatar) {
+    els.sidebarAvatar.src = data.avatar_url || "";
+  }
 
   return data;
 }
@@ -2435,6 +2438,7 @@ async function loadUserProfile() {
     navToggle: $("#navToggle"),
     sidebar: $("#sidebar"),
     sidebarUserName: $("#sidebarUserName"),
+    sidebarAvatar: $("#sidebarAvatar"),
     sidebarBackdrop: $("#sidebarBackdrop"),
     pageTitle: $("#pageTitle"),
     pageSubtitle: $("#pageSubtitle"),

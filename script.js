@@ -2595,7 +2595,7 @@ async function loadUserProfile() {
     groupCreateDoneBtn: $("#groupCreateDoneBtn"),
     shareFallbackHint: $("#shareFallbackHint"),
     sidebarAvatarHost: $("#sidebarAvatarHost"),
-    btnSidebarAvatar: $("#btnSidebarAvatar"),
+    
     coachBanner: $("#coachBanner"),
     coachBannerText: $("#coachBannerText"),
     coachBannerClose: $("#coachBannerClose"),

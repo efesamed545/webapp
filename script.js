@@ -9,15 +9,84 @@ const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 async function checkUser() {
-  const { data } = await supabase.auth.getSession();
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    console.error("Fehler beim Abrufen der Session:", error.message);
+    return;
+  }
 
   if (data.session) {
     document.getElementById("authGate").hidden = true;
     document.getElementById("app").hidden = false;
+
+    await saveUserProfile();
+    await loadUserProfile();
   }
 }
 
 checkUser();
+async function saveUserProfile() {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData?.user) {
+    console.error("Kein eingeloggter User gefunden");
+    return;
+  }
+
+  const user = userData.user;
+
+  const payload = {
+    id: user.id,
+    email: user.email || "",
+    full_name:
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      "",
+    avatar_url:
+      user.user_metadata?.avatar_url ||
+      user.user_metadata?.picture ||
+      ""
+  };
+
+  const { error } = await supabase
+    .from("profiles")
+    .upsert(payload);
+
+  if (error) {
+    console.error("Fehler beim Speichern des Profils:", error.message);
+    return;
+  }
+
+  console.log("Profil gespeichert");
+}
+async function loadUserProfile() {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData?.user) {
+    console.error("Kein User zum Laden gefunden");
+    return null;
+  }
+
+  const user = userData.user;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  if (error) {
+    console.error("Fehler beim Laden des Profils:", error.message);
+    return null;
+  }
+
+  if (els.sidebarUserName) {
+    els.sidebarUserName.textContent = data.full_name || data.email || "You";
+  }
+
+  return data;
+}
   // ——— Storage keys ———
   const STORAGE_TASKS = "flow_tasks";
   const STORAGE_EVENTS = "flow_events";

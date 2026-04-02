@@ -87,7 +87,13 @@ async function loadUserProfile() {
   if (els.sidebarAvatar) {
     els.sidebarAvatar.src = data.avatar_url || "";
   }
-
+  if (els.sidebarAvatarHost) {
+    if (data.avatar_url) {
+      els.sidebarAvatarHost.innerHTML = `<img src="${data.avatar_url}" alt="Profilbild" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    } else {
+      els.sidebarAvatarHost.innerHTML = "";
+    }
+  }
   return data;
 }
   // ——— Storage keys ———
@@ -2438,7 +2444,7 @@ async function loadUserProfile() {
     navToggle: $("#navToggle"),
     sidebar: $("#sidebar"),
     sidebarUserName: $("#sidebarUserName"),
-    sidebarAvatar: $("#sidebarAvatar"),
+    sidebarAvatarHost: $("#sidebarAvatarHost"),
     sidebarBackdrop: $("#sidebarBackdrop"),
     pageTitle: $("#pageTitle"),
     pageSubtitle: $("#pageSubtitle"),

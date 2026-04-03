@@ -35,6 +35,12 @@ async function saveUserProfile() {
   }
 
   const user = userData.user;
+  profile.displayName =
+  user.user_metadata?.full_name ||
+  user.user_metadata?.name ||
+  user.email ||
+  "You";
+saveProfile();
 
   const payload = {
     id: user.id,
@@ -80,7 +86,9 @@ async function loadUserProfile() {
     console.error("Fehler beim Laden des Profils:", error.message);
     return null;
   }
-
+  profile.displayName = data.full_name || data.email || "You";
+  profile.avatarUrl = data.avatar_url || "";
+  saveProfile();
   if (els.sidebarUserName) {
     els.sidebarUserName.textContent = data.full_name || data.email || "You";
   }
@@ -3628,6 +3636,24 @@ async function loadUserProfile() {
   function fillAvatarHost(host) {
     if (!host) return;
     host.innerHTML = "";
+  
+    // zuerst echtes Profilbild aus Supabase / Google
+    if (profile.avatarUrl) {
+      const img = document.createElement("img");
+      img.className = "avatar-img";
+      img.src = profile.avatarUrl;
+      img.alt = "";
+      img.decoding = "async";
+      img.draggable = false;
+      img.style.width = "100%";
+      img.style.height = "100%";
+      img.style.objectFit = "cover";
+      img.style.borderRadius = "50%";
+      host.appendChild(img);
+      return;
+    }
+  
+    // dann lokal hochgeladenes Bild
     if (profile.avatarCustom) {
       const img = document.createElement("img");
       img.className = "avatar-img";
@@ -3635,9 +3661,15 @@ async function loadUserProfile() {
       img.alt = "";
       img.decoding = "async";
       img.draggable = false;
+      img.style.width = "100%";
+      img.style.height = "100%";
+      img.style.objectFit = "cover";
+      img.style.borderRadius = "50%";
       host.appendChild(img);
       return;
     }
+  
+    // ganz am Ende nur noch der alte App-Fallback
     const id = AVATAR_PRESETS[profile.avatarId] ? profile.avatarId : "p1";
     host.innerHTML = AVATAR_PRESETS[id];
   }

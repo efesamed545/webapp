@@ -26,6 +26,34 @@ async function checkUser() {
 }
 
 checkUser();
+async function getCurrentUserId() {
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data?.user) {
+    console.error("Kein eingeloggter User gefunden");
+    return null;
+  }
+
+  return data.user.id;
+}
+async function loadTasksFromSupabase() {
+  const userId = await getCurrentUserId();
+
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Fehler beim Laden der Tasks:", error.message);
+    return [];
+  }
+
+  return data || [];
+}
 async function saveUserProfile() {
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
@@ -2734,8 +2762,8 @@ async function loadUserProfile() {
     localStorage.setItem(STORAGE_FOCUS_HISTORY, JSON.stringify(focusHistory));
   }
 
-  function loadState() {
-    tasks = loadJSON(STORAGE_TASKS, []);
+  async function loadState() {
+    tasks = await loadTasksFromSupabase();
     events = loadJSON(STORAGE_EVENTS, []);
     if (!Array.isArray(tasks)) tasks = [];
     if (!Array.isArray(events)) events = [];
@@ -5825,7 +5853,7 @@ async function loadUserProfile() {
   async function init() {
     calAnchor = startOfDay(new Date());
     selectedDateStr = formatYMD(new Date());
-    loadState();
+    await loadState();
     loadAppPrefs();
     
     initLanguage();
@@ -6174,5 +6202,6 @@ document.getElementById("app").hidden = false;
     renderDayDetail();
   }
 
-  init();
+  
+ init();
 })();

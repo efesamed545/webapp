@@ -5393,7 +5393,7 @@ async function loadUserProfile() {
 
   async function handleTaskSubmit(e) {
     e.preventDefault();
-    const id = els.taskId.value || uid();
+    const id = els.taskId.value || crypto.randomUUID();
     const existing = tasks.find((x) => x.id === id);
     const completed = els.taskCompleted.checked;
     const payload = {

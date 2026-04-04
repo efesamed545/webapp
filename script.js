@@ -2727,9 +2727,40 @@ async function loadUserProfile() {
     }
   }
 
-  function saveTasks() {
+  
+  async function saveTasks() {
+    const userId = await getCurrentUserId();
+  
+    if (!userId) {
+      console.error("Kein eingeloggter User für Tasks gefunden");
+      return;
+    }
+  
+    const payload = tasks.map((task) => ({
+      id: task.id,
+      user_id: userId,
+      title: task.title || "",
+      notes: task.notes || "",
+      priority: task.priority || "medium",
+      due_date: task.dueDate || null,
+      completed: !!task.completed,
+      created_at: task.createdAt
+        ? new Date(task.createdAt).toISOString()
+        : new Date().toISOString(),
+    }));
+  
+    const { error } = await supabase
+      .from("tasks")
+      .upsert(payload);
+  
+    if (error) {
+      console.error("Fehler beim Speichern der Tasks:", error.message);
+      return;
+    }
+  
     localStorage.setItem(STORAGE_TASKS, JSON.stringify(tasks));
     syncPointsLedger();
+    console.log("Tasks in Supabase gespeichert");
   }
 
   function saveEvents() {
@@ -5360,7 +5391,7 @@ async function loadUserProfile() {
     document.body.style.overflow = "";
   }
 
-  function handleTaskSubmit(e) {
+  async function handleTaskSubmit(e) {
     e.preventDefault();
     const id = els.taskId.value || uid();
     const existing = tasks.find((x) => x.id === id);
@@ -5388,7 +5419,7 @@ async function loadUserProfile() {
     } else {
       tasks.push(payload);
     }
-    saveTasks();
+    await saveTasks();
     maybeUpdateBuddyRecord();
     refreshAchievements(true);
     closeTaskModal();

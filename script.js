@@ -2764,6 +2764,7 @@ async function loadUserProfile() {
 
   async function loadState() {
     tasks = await loadTasksFromSupabase();
+    console.log("Tasks aus Supabase:", tasks);
     events = loadJSON(STORAGE_EVENTS, []);
     if (!Array.isArray(tasks)) tasks = [];
     if (!Array.isArray(events)) events = [];

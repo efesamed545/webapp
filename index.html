@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#e67e22" />
+  <meta name="description" content="Tasks, calendar, focus, and group sharing." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Flow" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <title>Flow — Tasks & Calendar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1217,6 +1225,10 @@
             <input type="date" id="taskDue" />
           </label>
         </div>
+        <label class="field" for="taskShareScope">
+          <span data-i18n="share.scopeLabel">Share with</span>
+          <select id="taskShareScope" class="input-select" aria-label="Share task"></select>
+        </label>
         <label class="field checkbox-field">
           <input type="checkbox" id="taskCompleted" />
           <span data-i18n="taskModal.completedLabel">Mark as completed</span>
@@ -1298,6 +1310,10 @@
             <option value="mint" data-i18n="color.mint">Mint</option>
             <option value="amber" data-i18n="color.amber">Amber</option>
           </select>
+        </label>
+        <label class="field" for="eventShareScope">
+          <span data-i18n="share.scopeLabel">Share with</span>
+          <select id="eventShareScope" class="input-select" aria-label="Share event"></select>
         </label>
         <label class="field checkbox-field" id="eventStreakRow" hidden>
           <input type="checkbox" id="eventStreakDone" />

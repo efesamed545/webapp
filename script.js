@@ -9,14 +9,23 @@ const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 async function checkUser() {
-  const { data, error } = await supabase.auth.getSession();
+  let data = { session: null };
+  let error = null;
+  try {
+    const out = await supabase.auth.getSession();
+    data = out.data || data;
+    error = out.error;
+  } catch (e) {
+    console.error("Fehler beim Abrufen der Session:", e);
+    return;
+  }
 
   if (error) {
     console.error("Fehler beim Abrufen der Session:", error.message);
     return;
   }
 
-  if (data.session) {
+  if (data && data.session) {
     document.getElementById("authGate").hidden = true;
     document.getElementById("app").hidden = false;
 
@@ -27,32 +36,229 @@ async function checkUser() {
 
 checkUser();
 async function getCurrentUserId() {
+  try {
+    const { data: sess } = await supabase.auth.getSession();
+    if (sess?.session?.user?.id) return sess.session.user.id;
+  } catch (_) {}
   const { data, error } = await supabase.auth.getUser();
-
-  if (error || !data?.user) {
-    console.error("Kein eingeloggter User gefunden");
-    return null;
-  }
-
+  if (error || !data?.user) return null;
   return data.user.id;
 }
-async function loadTasksFromSupabase() {
+
+function mapTaskFromSupabase(row) {
+  return {
+    id: row.id,
+    title: String(row.title || ""),
+    notes: String(row.notes || ""),
+    priority: row.priority || "medium",
+    dueDate: row.due_date || null,
+    completed: Boolean(row.completed),
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    groupId: row.group_id || null,
+    ...(row.completed_at ? { completedAt: String(row.completed_at).slice(0, 10) } : {}),
+  };
+}
+
+/** Full row for INSERT into `tasks` */
+function mapTaskToSupabase(task, userId) {
+  return {
+    id: task.id,
+    user_id: userId,
+    title: task.title || "",
+    notes: task.notes || "",
+    priority: task.priority || "medium",
+    due_date: task.dueDate || null,
+    completed: Boolean(task.completed),
+    completed_at: task.completed ? task.completedAt || null : null,
+    created_at: task.createdAt ? new Date(task.createdAt).toISOString() : new Date().toISOString(),
+    group_id: task.groupId || null,
+  };
+}
+
+/** Patch for UPDATE — never send id/user_id/created_at */
+function mapTaskToSupabaseUpdate(task) {
+  return {
+    title: task.title || "",
+    notes: task.notes || "",
+    priority: task.priority || "medium",
+    due_date: task.dueDate || null,
+    completed: Boolean(task.completed),
+    completed_at: task.completed ? task.completedAt || null : null,
+    group_id: task.groupId || null,
+  };
+}
+
+/** Local calendar day YYYY-MM-DD from an ISO / DB timestamp */
+function localYmdFromIso(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function localHHMMFromDate(d) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function normalizeHHMM(t) {
+  if (!t || typeof t !== "string") return "09:00";
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return "09:00";
+  const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+  const min = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+function mapEventFromSupabase(row) {
+  const start = row.start_time ? new Date(row.start_time) : new Date();
+  const allDay = Boolean(row.all_day);
+  const ymd = localYmdFromIso(row.start_time);
+  let startTime = "09:00";
+  let endTime = null;
+  if (!allDay) {
+    startTime = localHHMMFromDate(start);
+    endTime = row.end_time ? localHHMMFromDate(new Date(row.end_time)) : null;
+  }
+  return {
+    id: row.id,
+    title: String(row.title || ""),
+    notes: String(row.notes || ""),
+    date: ymd,
+    allDay,
+    startTime,
+    endTime,
+    color: row.color || "violet",
+    streakDone: Boolean(row.streak_done),
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    groupId: row.group_id || null,
+  };
+}
+
+/**
+ * Maps frontend event → Supabase row.
+ * Expects table `events` with: id, user_id, title, notes, start_time, end_time, all_day, color, created_at
+ * Plus streak_done (boolean) for timed “streak” checkbox — add column in DB if missing.
+ */
+function mapEventToSupabase(ev, userId) {
+  const ymd = ev.date || localYmdFromIso(null);
+  const startIso = ev.allDay
+    ? new Date(`${ymd}T00:00:00`).toISOString()
+    : new Date(`${ymd}T${normalizeHHMM(ev.startTime)}:00`).toISOString();
+  const endIso = !ev.allDay && ev.endTime ? new Date(`${ymd}T${normalizeHHMM(ev.endTime)}:00`).toISOString() : null;
+  return {
+    id: ev.id,
+    user_id: userId,
+    title: ev.title || "",
+    notes: ev.notes || "",
+    start_time: startIso,
+    end_time: endIso,
+    all_day: !!ev.allDay,
+    color: ev.color || "violet",
+    streak_done: !!ev.streakDone,
+    created_at: ev.createdAt ? new Date(ev.createdAt).toISOString() : new Date().toISOString(),
+    group_id: ev.groupId || null,
+  };
+}
+
+/** Patch for UPDATE on `events` */
+function mapEventToSupabaseUpdate(ev) {
+  const ymd = ev.date || localYmdFromIso(null);
+  const startIso = ev.allDay
+    ? new Date(`${ymd}T00:00:00`).toISOString()
+    : new Date(`${ymd}T${normalizeHHMM(ev.startTime)}:00`).toISOString();
+  const endIso = !ev.allDay && ev.endTime ? new Date(`${ymd}T${normalizeHHMM(ev.endTime)}:00`).toISOString() : null;
+  return {
+    title: ev.title || "",
+    notes: ev.notes || "",
+    start_time: startIso,
+    end_time: endIso,
+    all_day: !!ev.allDay,
+    color: ev.color || "violet",
+    streak_done: !!ev.streakDone,
+    group_id: ev.groupId || null,
+  };
+}
+
+async function fetchMySupabaseGroupIds(userId) {
+  const { data, error } = await supabase.from("group_members").select("group_id").eq("user_id", userId);
+  if (error) {
+    console.error("group_members (for tasks/events scope):", error.message);
+    return [];
+  }
+  return [...new Set((data || []).map((r) => r.group_id).filter(Boolean))];
+}
+
+/**
+ * @param {string[] | null} [groupIdsPreloaded]  If provided (e.g. after loadGroups), skips an extra group_members query.
+ */
+async function loadTasksFromSupabase(groupIdsPreloaded) {
   const userId = await getCurrentUserId();
 
   if (!userId) return [];
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const groupIds = Array.isArray(groupIdsPreloaded)
+    ? groupIdsPreloaded
+    : await fetchMySupabaseGroupIds(userId);
+  let q = supabase.from("tasks").select("*");
+  if (groupIds.length === 0) {
+    q = q.eq("user_id", userId);
+  } else {
+    q = q.or(`user_id.eq.${userId},group_id.in.(${groupIds.join(",")})`);
+  }
+  const { data, error } = await q.order("created_at", { ascending: false });
 
   if (error) {
     console.error("Fehler beim Laden der Tasks:", error.message);
+    try {
+      const raw = localStorage.getItem(STORAGE_TASKS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
     return [];
   }
 
-  return data || [];
+  const mapped = (data || []).map(mapTaskFromSupabase);
+  localStorage.setItem(STORAGE_TASKS, JSON.stringify(mapped));
+  return mapped;
+}
+
+/**
+ * @param {string[] | null} [groupIdsPreloaded]
+ */
+async function loadEventsFromSupabase(groupIdsPreloaded) {
+  const userId = await getCurrentUserId();
+
+  if (!userId) return [];
+
+  const groupIds = Array.isArray(groupIdsPreloaded)
+    ? groupIdsPreloaded
+    : await fetchMySupabaseGroupIds(userId);
+  let q = supabase.from("events").select("*");
+  if (groupIds.length === 0) {
+    q = q.eq("user_id", userId);
+  } else {
+    q = q.or(`user_id.eq.${userId},group_id.in.(${groupIds.join(",")})`);
+  }
+  const { data, error } = await q.order("start_time", { ascending: true });
+
+  if (error) {
+    console.error("Fehler beim Laden der Events:", error.message);
+    try {
+      const raw = localStorage.getItem(STORAGE_EVENTS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  const mapped = (data || []).map(mapEventFromSupabase);
+  localStorage.setItem(STORAGE_EVENTS, JSON.stringify(mapped));
+  return mapped;
 }
 async function saveUserProfile() {
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -91,8 +297,6 @@ saveProfile();
     console.error("Fehler beim Speichern des Profils:", error.message);
     return;
   }
-
-  console.log("Profil gespeichert");
 }
 async function loadUserProfile() {
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -142,6 +346,8 @@ async function loadUserProfile() {
   const STORAGE_BUDDY = "flow_buddy";
   const STORAGE_PROFILE = "flow_profile";
   const STORAGE_REMINDED = "flow_reminded_events";
+  /** Set after first automatic browser notification permission prompt (one-time per device). */
+  const STORAGE_NOTIF_FIRST_LAUNCH_ASKED = "flow_notif_first_launch_asked_v1";
   const STORAGE_COACH_DISMISS = "flow_coach_dismissed_ymd";
   const STORAGE_SESSION = "flow_auth_session";
   const STORAGE_USERS = "flow_auth_users";
@@ -265,6 +471,8 @@ async function loadUserProfile() {
       "stats.eventsWeek": "Events this week",
       "stats.openTasks": "Open tasks",
       "taskModal.completedLabel": "Mark as completed",
+      "share.scopeLabel": "Share with",
+      "share.scopePrivate": "Private (only me)",
       "taskModal.dueLabel": "Due date (optional)",
       "taskModal.edit": "Edit task",
       "taskModal.new": "New task",
@@ -366,6 +574,8 @@ async function loadUserProfile() {
       "stats.eventsWeek": "Termine diese Woche",
       "stats.openTasks": "Offene Aufgaben",
       "taskModal.completedLabel": "Als erledigt markieren",
+      "share.scopeLabel": "Teilen mit",
+      "share.scopePrivate": "Privat (nur ich)",
       "taskModal.dueLabel": "Fälligkeitsdatum (optional)",
       "taskModal.edit": "Aufgabe bearbeiten",
       "taskModal.new": "Neue Aufgabe",
@@ -916,7 +1126,7 @@ async function loadUserProfile() {
     "buddy.lastYou": "You last active",
     "buddy.lastBuddy": "Buddy last marked active",
     "groups.createTitle": "Create a group",
-    "groups.createHint": "Get a code and link to invite others (stored on this device until you connect a server).",
+    "groups.createHint": "Create a cloud group and invite others with a code or link.",
     "groups.nameLabel": "Group name",
     "groups.namePlaceholder": "Study crew",
     "groups.createBtn": "Create group",
@@ -936,6 +1146,7 @@ async function loadUserProfile() {
     "groups.created": "Group created",
     "groups.copied": "Copied",
     "groups.invalidCode": "No group matches this code.",
+    "groups.createFailed": "Could not create the group. Try again.",
     "settings.profile": "Profile",
     "settings.profileHint": "Used in groups and buddy features.",
     "settings.displayName": "Display name",
@@ -946,6 +1157,9 @@ async function loadUserProfile() {
     "settings.notifGranted": "Notifications enabled",
     "settings.notifDenied": "Blocked — reminders will show inside the app only",
     "settings.notifDefault": "Not requested yet",
+    "notif.eventBodySoon": "Starting soon",
+    "notif.tasksDueTitle": "Tasks due today",
+    "notif.tasksDueBody": "You have {n} open task(s) due today.",
     "toast.reminderTitle": "Upcoming",
     "toast.reminderBody": "{title} at {time}",
     "dashboard.openMotivation": "Open",
@@ -1198,7 +1412,7 @@ async function loadUserProfile() {
     "buddy.lastYou": "Du zuletzt aktiv",
     "buddy.lastBuddy": "Buddy zuletzt aktiv",
     "groups.createTitle": "Gruppe erstellen",
-    "groups.createHint": "Code und Link zum Einladen (lokal auf diesem Gerät, bis ein Server angebunden wird).",
+    "groups.createHint": "Erstelle eine Cloud-Gruppe und lade andere per Code oder Link ein.",
     "groups.nameLabel": "Gruppenname",
     "groups.namePlaceholder": "Lerngruppe",
     "groups.createBtn": "Gruppe erstellen",
@@ -1218,6 +1432,7 @@ async function loadUserProfile() {
     "groups.created": "Gruppe erstellt",
     "groups.copied": "Kopiert",
     "groups.invalidCode": "Keine Gruppe mit diesem Code.",
+    "groups.createFailed": "Gruppe konnte nicht erstellt werden. Bitte erneut versuchen.",
     "settings.profile": "Profil",
     "settings.profileHint": "Wird in Gruppen und Buddy-Funktionen verwendet.",
     "settings.displayName": "Anzeigename",
@@ -1228,6 +1443,9 @@ async function loadUserProfile() {
     "settings.notifGranted": "Benachrichtigungen aktiv",
     "settings.notifDenied": "Blockiert — Erinnerungen nur in der App",
     "settings.notifDefault": "Noch nicht angefragt",
+    "notif.eventBodySoon": "Startet gleich",
+    "notif.tasksDueTitle": "Fällige Aufgaben heute",
+    "notif.tasksDueBody": "Du hast heute {n} offene fällige Aufgabe(n).",
     "toast.reminderTitle": "Demnächst",
     "toast.reminderBody": "{title} um {time}",
     "dashboard.openMotivation": "Öffnen",
@@ -1985,8 +2203,17 @@ async function loadUserProfile() {
     setView(currentView);
   }
 
-  function clearLocalAppData() {
+  async function clearLocalAppData() {
     if (!confirm(t("settings.clearDataConfirm"))) return;
+    const userId = await getCurrentUserId();
+    if (userId) {
+      const [rt, re] = await Promise.all([
+        supabase.from("tasks").delete().eq("user_id", userId),
+        supabase.from("events").delete().eq("user_id", userId),
+      ]);
+      if (rt.error) console.error("Clear tasks in Supabase:", rt.error.message);
+      if (re.error) console.error("Clear events in Supabase:", re.error.message);
+    }
     tasks = [];
     events = [];
     groups = [];
@@ -2003,14 +2230,15 @@ async function loadUserProfile() {
     };
     try {
       localStorage.removeItem(STORAGE_REMINDED);
+      localStorage.removeItem(STORAGE_NOTIF_FIRST_LAUNCH_ASKED);
       localStorage.removeItem(STORAGE_GROUP_MEMBERSHIP);
       localStorage.removeItem(STORAGE_POINTS_LEDGER);
       localStorage.removeItem(STORAGE_SELFCARE_JOURNAL);
       localStorage.removeItem(STORAGE_ACHIEVEMENTS);
       localStorage.removeItem(STORAGE_FOCUS_HISTORY);
+      localStorage.setItem(STORAGE_TASKS, "[]");
+      localStorage.setItem(STORAGE_EVENTS, "[]");
     } catch (_) {}
-    saveTasks();
-    saveEvents();
     saveGroupsState();
     saveBuddy();
     syncPointsLedger();
@@ -2254,13 +2482,12 @@ async function loadUserProfile() {
     document.getElementById("btnSettingsChangePassword")?.addEventListener("click", () => {
       showToast(t("settings.passwordSoon"));
     });
-    document.getElementById("btnSettingsClearData")?.addEventListener("click", () => clearLocalAppData());
-    document.getElementById("btnSettingsResetGeneral")?.addEventListener("click", () => clearLocalAppData());
-    document.getElementById("btnSettingsLeaveGroup")?.addEventListener("click", () => {
+    document.getElementById("btnSettingsClearData")?.addEventListener("click", () => void clearLocalAppData());
+    document.getElementById("btnSettingsResetGeneral")?.addEventListener("click", () => void clearLocalAppData());
+    document.getElementById("btnSettingsLeaveGroup")?.addEventListener("click", async () => {
       if (!confirm(t("groups.leave") + "?")) return;
-      leaveGroup();
+      await leaveGroup();
       renderSettingsGroupSection();
-      showToast(t("settings.leftGroup"));
     });
     document.getElementById("btnSettingsManageGroup")?.addEventListener("click", () => {
       closeSettingsModal();
@@ -2573,6 +2800,7 @@ async function loadUserProfile() {
     taskNotes: $("#taskNotes"),
     taskPriority: $("#taskPriority"),
     taskDue: $("#taskDue"),
+    taskShareScope: $("#taskShareScope"),
     taskCompleted: $("#taskCompleted"),
     taskDelete: $("#taskDelete"),
     taskModalClose: $("#taskModalClose"),
@@ -2661,6 +2889,7 @@ async function loadUserProfile() {
     btnLeaveGroup: $("#btnLeaveGroup"),
     eventStreakRow: $("#eventStreakRow"),
     eventStreakDone: $("#eventStreakDone"),
+    eventShareScope: $("#eventShareScope"),
     btnCalendarRecap: $("#btnCalendarRecap"),
     calendarRecapModal: $("#calendarRecapModal"),
     calendarRecapBackdrop: $("#calendarRecapBackdrop"),
@@ -2727,45 +2956,92 @@ async function loadUserProfile() {
     }
   }
 
-  
-  async function saveTasks() {
+  async function insertTaskToSupabase(task) {
     const userId = await getCurrentUserId();
-  
     if (!userId) {
-      console.error("Kein eingeloggter User für Tasks gefunden");
-      return;
+      console.error("Kein eingeloggter User für Task-Insert gefunden");
+      return false;
     }
-  
-    const payload = tasks.map((task) => ({
-      id: task.id,
-      user_id: userId,
-      title: task.title || "",
-      notes: task.notes || "",
-      priority: task.priority || "medium",
-      due_date: task.dueDate || null,
-      completed: !!task.completed,
-      created_at: task.createdAt
-        ? new Date(task.createdAt).toISOString()
-        : new Date().toISOString(),
-    }));
-  
-    const { error } = await supabase
-      .from("tasks")
-      .upsert(payload);
-  
+    const row = mapTaskToSupabase(task, userId);
+    const { error } = await supabase.from("tasks").insert([row]);
     if (error) {
-      console.error("Fehler beim Speichern der Tasks:", error.message);
-      return;
+      console.error("Fehler beim Anlegen der Task:", error.message);
+      return false;
     }
-  
-    localStorage.setItem(STORAGE_TASKS, JSON.stringify(tasks));
-    syncPointsLedger();
-    console.log("Tasks in Supabase gespeichert");
+    return true;
   }
 
-  function saveEvents() {
-    localStorage.setItem(STORAGE_EVENTS, JSON.stringify(events));
-    syncPointsLedger();
+  async function updateTaskToSupabase(task) {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.error("Kein eingeloggter User für Task-Update gefunden");
+      return false;
+    }
+    const patch = mapTaskToSupabaseUpdate(task);
+    const { error } = await supabase.from("tasks").update(patch).eq("id", task.id);
+    if (error) {
+      console.error("Fehler beim Aktualisieren der Task:", error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function deleteTaskFromSupabase(taskId) {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.error("Kein eingeloggter User für Task-Löschung gefunden");
+      return false;
+    }
+    const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+    if (error) {
+      console.error("Fehler beim Löschen der Task:", error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function insertEventToSupabase(ev) {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.error("Kein eingeloggter User für Event-Insert gefunden");
+      return false;
+    }
+    const row = mapEventToSupabase(ev, userId);
+    const { error } = await supabase.from("events").insert([row]);
+    if (error) {
+      console.error("Fehler beim Anlegen des Events:", error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function updateEventToSupabase(ev) {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.error("Kein eingeloggter User für Event-Update gefunden");
+      return false;
+    }
+    const patch = mapEventToSupabaseUpdate(ev);
+    const { error } = await supabase.from("events").update(patch).eq("id", ev.id);
+    if (error) {
+      console.error("Fehler beim Aktualisieren des Events:", error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function deleteEventFromSupabase(eventId) {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.error("Kein eingeloggter User für Event-Löschung gefunden");
+      return false;
+    }
+    const { error } = await supabase.from("events").delete().eq("id", eventId);
+    if (error) {
+      console.error("Fehler beim Löschen des Events:", error.message);
+      return false;
+    }
+    return true;
   }
 
   function sanitizeSelfcareEntry(raw) {
@@ -2793,14 +3069,75 @@ async function loadUserProfile() {
     localStorage.setItem(STORAGE_FOCUS_HISTORY, JSON.stringify(focusHistory));
   }
 
+  async function loadGroupsFromSupabase() {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      try {
+        localStorage.setItem(STORAGE_GROUPS, "[]");
+      } catch (_) {}
+      return [];
+    }
+    const { data: myRows, error: e1 } = await supabase.from("group_members").select("group_id").eq("user_id", userId);
+    if (e1) {
+      console.error("Load groups (membership):", e1.message);
+      return loadJSON(STORAGE_GROUPS, []);
+    }
+    const gids = [...new Set((myRows || []).map((r) => r.group_id).filter(Boolean))];
+    if (!gids.length) {
+      try {
+        localStorage.setItem(STORAGE_GROUPS, "[]");
+      } catch (_) {}
+      return [];
+    }
+    const { data: grps, error: e2 } = await supabase.from("groups").select("*").in("id", gids);
+    if (e2 || !grps) {
+      console.error("Load groups:", e2?.message);
+      return loadJSON(STORAGE_GROUPS, []);
+    }
+    let allMem = [];
+    const { data: memRows, error: e3 } = await supabase
+      .from("group_members")
+      .select("user_id, group_id, profiles(full_name, email)")
+      .in("group_id", gids);
+    if (!e3 && memRows) {
+      allMem = memRows;
+    } else {
+      if (e3) console.warn("group_members+profiles join failed, using ids only:", e3.message);
+      const { data: fallback } = await supabase.from("group_members").select("user_id, group_id").in("group_id", gids);
+      allMem = (fallback || []).map((r) => ({ ...r, profiles: null }));
+    }
+
+    const mapped = grps.map((row) => ({
+      id: row.id,
+      name: row.name,
+      code: row.invite_code,
+      owner_id: row.owner_id,
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+      members: allMem
+        .filter((m) => m.group_id === row.id)
+        .map((m) => {
+          const p = m.profiles;
+          const pr = Array.isArray(p) ? p[0] : p;
+          return {
+            id: m.user_id,
+            name: (pr && (pr.full_name || pr.email)) || String(m.user_id).slice(0, 8),
+          };
+        }),
+    }));
+    try {
+      localStorage.setItem(STORAGE_GROUPS, JSON.stringify(mapped));
+    } catch (_) {}
+    return mapped;
+  }
+
   async function loadState() {
-    tasks = await loadTasksFromSupabase();
-    console.log("Tasks aus Supabase:", tasks);
-    events = loadJSON(STORAGE_EVENTS, []);
+    groups = await loadGroupsFromSupabase();
+    if (!Array.isArray(groups)) groups = [];
+    const myGroupIds = groups.map((g) => g.id);
+    tasks = await loadTasksFromSupabase(myGroupIds);
+    events = await loadEventsFromSupabase(myGroupIds);
     if (!Array.isArray(tasks)) tasks = [];
     if (!Array.isArray(events)) events = [];
-    groups = loadJSON(STORAGE_GROUPS, []);
-    if (!Array.isArray(groups)) groups = [];
     const rawJournal = loadJSON(STORAGE_SELFCARE_JOURNAL, {});
     selfcareJournal = {};
     if (rawJournal && typeof rawJournal === "object") {
@@ -2818,6 +3155,10 @@ async function loadUserProfile() {
     const rawFocus = loadJSON(STORAGE_FOCUS_HISTORY, []);
     focusHistory = Array.isArray(rawFocus) ? rawFocus.slice(0, 200) : [];
     activeGroupId = localStorage.getItem(STORAGE_GROUP_MEMBERSHIP) || null;
+    if (activeGroupId && !groups.some((g) => g.id === activeGroupId)) {
+      activeGroupId = null;
+      saveGroupsState();
+    }
     const rawBuddy = loadJSON(STORAGE_BUDDY, null);
     if (rawBuddy && typeof rawBuddy === "object") {
       buddy = {
@@ -3092,19 +3433,22 @@ async function loadUserProfile() {
     else els.notificationStatus.textContent = t("settings.notifDefault");
   }
 
+  /** Browser Notification API — respects master toggle; uses stable `tag` to limit duplicates at OS level. */
+  function sendBrowserNotification(title, body, tag) {
+    if (!appPrefs.notificationsEnabled) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    try {
+      new Notification(title, { body, tag: tag || "flow-generic" });
+    } catch (_) {}
+  }
+
   function maybeNotifyEvent(ev) {
     if (!appPrefs.notificationsEnabled) return;
-    const title = t("toast.reminderTitle");
+    const toastTitle = t("toast.reminderTitle");
     const timeShown = formatTimeForDisplay(ev.startTime || "");
-    const body = t("toast.reminderBody")
-      .replace("{title}", ev.title)
-      .replace("{time}", timeShown);
-    showToast(`${title}: ${ev.title} · ${timeShown}`, { type: "accent" });
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      try {
-        new Notification(title, { body, tag: `flow-${ev.id}-${ev.date}` });
-      } catch (_) {}
-    }
+    showToast(`${toastTitle}: ${ev.title} · ${timeShown}`, { type: "accent" });
+    const lead = Number(appPrefs.reminderLeadMinutes) || 30;
+    sendBrowserNotification(ev.title, t("notif.eventBodySoon"), `flow-event-${ev.id}-${ev.date}-lead${lead}`);
   }
 
   function getReminderLeadMs() {
@@ -3125,7 +3469,8 @@ async function loadUserProfile() {
       if (Number.isNaN(start)) return;
       const fireAt = start - lead;
       const key = `${ev.id}__${ev.date}`;
-      if (now < fireAt || now > fireAt + 120000) return;
+      /* Wider window so a 60s tick still catches the reminder slot */
+      if (now < fireAt || now > fireAt + 180000) return;
       if (reminded.has(key)) return;
       reminded.add(key);
       addRemindedKey(key);
@@ -3147,7 +3492,13 @@ async function loadUserProfile() {
     try {
       localStorage.setItem(key, "1");
     } catch (_) {}
-    showToast(t("settings.taskDueTodayToast").replace("{n}", String(dueToday.length)), { type: "accent" });
+    const msg = t("settings.taskDueTodayToast").replace("{n}", String(dueToday.length));
+    showToast(msg, { type: "accent" });
+    sendBrowserNotification(
+      t("notif.tasksDueTitle"),
+      t("notif.tasksDueBody").replace("{n}", String(dueToday.length)),
+      `flow-tasks-due-${today}`
+    );
   }
 
   function checkDailyOpenTasksReminder() {
@@ -3262,36 +3613,45 @@ async function loadUserProfile() {
     if (els.settingsModal && !els.settingsModal.hidden) renderSettingsGroupSection();
   }
 
-  function joinGroupByCode(code) {
-    const c = String(code || "")
-      .trim()
-      .toUpperCase();
-    if (!c) return false;
-    const g = groups.find((x) => x.code === c);
-    if (!g) return false;
-    if (!g.members.some((m) => m.id === profile.id)) {
-      g.members.push({ id: profile.id, name: profile.displayName });
+  async function joinGroupByCode(code) {
+    const raw = String(code || "").trim();
+    if (!raw) return false;
+    const { data, error } = await supabase.rpc("join_group_by_code", { p_code: raw });
+    if (error) {
+      console.error("join_group_by_code:", error.message);
+      return false;
     }
-    activeGroupId = g.id;
-    saveGroupsState();
+    if (!data || !data.length) return false;
+    groups = await loadGroupsFromSupabase();
+    const gid = data[0].gid;
+    const g = groups.find((x) => x.id === gid);
+    if (g) {
+      activeGroupId = g.id;
+      saveGroupsState();
+    }
     refreshAchievements(true);
     renderGroups();
     showToast(t("groups.joined"));
+    void startSupabaseRealtime();
     return true;
   }
 
-  function leaveGroup() {
+  async function leaveGroup() {
     if (!activeGroupId) return;
-    const g = groups.find((x) => x.id === activeGroupId);
-    if (g) {
-      g.members = g.members.filter((m) => m.id !== profile.id);
-    }
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    const gid = activeGroupId;
+    const { error } = await supabase.from("group_members").delete().eq("group_id", gid).eq("user_id", userId);
+    if (error) console.error("leaveGroup:", error.message);
     activeGroupId = null;
+    groups = await loadGroupsFromSupabase();
     saveGroupsState();
     renderGroups();
+    showToast(t("settings.leftGroup"));
+    void startSupabaseRealtime();
   }
 
-  function parseJoinFromQuery() {
+  async function parseJoinFromQuery() {
     try {
       const params = new URLSearchParams(window.location.search);
       const join = params.get("join");
@@ -3301,7 +3661,7 @@ async function loadUserProfile() {
       clean.searchParams.delete("join");
       window.history.replaceState({}, "", clean.pathname + clean.search);
       setView("groups");
-      const ok = joinGroupByCode(join);
+      const ok = await joinGroupByCode(join);
       if (!ok) showToast(t("groups.invalidCode"));
       return true;
     } catch (_) {}
@@ -3317,6 +3677,26 @@ async function loadUserProfile() {
       await Notification.requestPermission();
     } catch (_) {}
     updateNotificationStatusText();
+  }
+
+  /** One-time permission prompt shortly after first app load (master notifications must be on). */
+  function scheduleFirstRunNotificationPermission() {
+    if (typeof Notification === "undefined") return;
+    try {
+      if (localStorage.getItem(STORAGE_NOTIF_FIRST_LAUNCH_ASKED)) return;
+    } catch (_) {
+      return;
+    }
+    setTimeout(() => {
+      if (!appPrefs.notificationsEnabled) return;
+      if (Notification.permission !== "default") return;
+      try {
+        localStorage.setItem(STORAGE_NOTIF_FIRST_LAUNCH_ASKED, "1");
+      } catch (_) {}
+      void Notification.requestPermission()
+        .then(() => updateNotificationStatusText())
+        .catch(() => updateNotificationStatusText());
+    }, 2800);
   }
 
   // Week starts Sunday (0) — matches typical month grid
@@ -3943,7 +4323,7 @@ async function loadUserProfile() {
     }
   }
 
-  function handleGroupCreateSubmit(e) {
+  async function handleGroupCreateSubmit(e) {
     e.preventDefault();
     const name = (els.groupModalName && els.groupModalName.value ? els.groupModalName.value : "").trim();
     if (!name) {
@@ -3951,28 +4331,58 @@ async function loadUserProfile() {
       els.groupModalName?.focus();
       return;
     }
-    let code = randomGroupCode();
-    while (groups.some((g) => g.code === code)) code = randomGroupCode();
-    const g = {
-      id: uid(),
-      name,
-      code,
-      members: [{ id: profile.id, name: profile.displayName }],
-      createdAt: Date.now(),
-    };
-    groups.push(g);
-    activeGroupId = g.id;
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      showToast(t("groups.createFailed"));
+      return;
+    }
+    let created = /** @type {{ id: string, code: string } | null} */ (null);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const code = randomGroupCode();
+      const gid = crypto.randomUUID();
+      const { error: insErr } = await supabase.from("groups").insert({
+        id: gid,
+        name,
+        owner_id: userId,
+        invite_code: code,
+      });
+      if (insErr) {
+        const msg = String(insErr.message || "");
+        if (msg.includes("invite") || insErr.code === "23505") continue;
+        console.error(insErr);
+        showToast(t("groups.createFailed"));
+        return;
+      }
+      const { error: memErr } = await supabase.from("group_members").insert({ group_id: gid, user_id: userId });
+      if (memErr) {
+        console.error(memErr);
+        await supabase.from("groups").delete().eq("id", gid);
+        showToast(t("groups.createFailed"));
+        return;
+      }
+      created = { id: gid, code };
+      break;
+    }
+    if (!created) {
+      showToast(t("groups.createFailed"));
+      return;
+    }
+    groups = await loadGroupsFromSupabase();
+    activeGroupId = created.id;
     saveGroupsState();
-    const link = getInviteUrl(g.code);
-    lastGroupShareContext = { name: g.name, code: g.code, link };
+    const g = groups.find((x) => x.id === created.id);
+    const displayCode = g ? g.code : created.code;
+    const link = getInviteUrl(displayCode);
+    lastGroupShareContext = { name, code: displayCode, link };
     if (els.groupCreateStepForm) els.groupCreateStepForm.hidden = true;
     if (els.groupCreateStepSuccess) els.groupCreateStepSuccess.hidden = false;
-    if (els.groupModalSuccessCode) els.groupModalSuccessCode.textContent = g.code;
+    if (els.groupModalSuccessCode) els.groupModalSuccessCode.textContent = displayCode;
     if (els.groupModalSuccessLink) els.groupModalSuccessLink.value = link;
     if (els.shareFallbackHint) els.shareFallbackHint.hidden = true;
     showToast(t("groups.created"));
     refreshAchievements(true);
     renderGroups();
+    void startSupabaseRealtime();
   }
 
   function getCoachCounts() {
@@ -4527,10 +4937,10 @@ async function loadUserProfile() {
     const selfcareDays = getSelfcareDayKeys();
     const selfcareSet = new Set(selfcareDays);
     const activitySet = new Set([...collectActivityDays(), ...selfcareDays]);
-    const createdByMeCount = groups.filter((g) => Array.isArray(g.members) && g.members[0] && g.members[0].id === profile.id).length;
+    const createdByMeCount = groups.filter((g) => g.owner_id === profile.id).length;
     const invitedCount = groups.reduce((acc, g) => {
-      if (!Array.isArray(g.members) || !g.members[0] || g.members[0].id !== profile.id) return acc;
-      return Math.max(acc, g.members.length);
+      if (g.owner_id !== profile.id) return acc;
+      return Math.max(acc, Array.isArray(g.members) ? g.members.length : 0);
     }, 0);
     return {
       completedTasks: tasks.filter((t) => t.completed).length,
@@ -4833,6 +5243,27 @@ async function loadUserProfile() {
     return a;
   }
 
+  /** Single refresh pass after task mutations (no duplicate renders of the same view). */
+  function refreshUiAfterTasksChange() {
+    renderTasks();
+    renderDashboard();
+    renderMotivation();
+    if (currentView === "calendar") {
+      renderCalendar();
+      renderDayDetail();
+    }
+    refreshCoachBanner();
+  }
+
+  function refreshUiAfterEventsChange() {
+    renderCalendar();
+    renderDayDetail();
+    renderDashboard();
+    renderMotivation();
+    refreshCoachBanner();
+    runReminderTick();
+  }
+
   function renderTasks() {
     const list = filteredTasks();
     els.taskList.innerHTML = "";
@@ -4874,38 +5305,41 @@ async function loadUserProfile() {
       }
 
       const checkBtn = li.querySelector(".task-check");
-      checkBtn.addEventListener("click", (e) => {
+      checkBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
+        const prev = { completed: task.completed, completedAt: task.completedAt };
         task.completed = !task.completed;
         if (task.completed) {
           task.completedAt = formatYMD(new Date());
-          touchMeActivityYmd(task.completedAt);
         } else {
           delete task.completedAt;
         }
-        saveTasks();
+        const ok = await updateTaskToSupabase(task);
+        if (!ok) {
+          task.completed = prev.completed;
+          if (prev.completedAt) task.completedAt = prev.completedAt;
+          else delete task.completedAt;
+          return;
+        }
+        const touchYmd = task.completed && task.completedAt ? task.completedAt : null;
+        tasks = await loadTasksFromSupabase();
+        syncPointsLedger();
+        if (touchYmd) touchMeActivityYmd(touchYmd);
         maybeUpdateBuddyRecord();
         refreshAchievements(true);
-        renderTasks();
-        if (currentView === "dashboard") renderDashboard();
-        if (currentView === "motivation") renderMotivation();
-        if (currentView === "calendar") {
-          renderCalendar();
-          renderDayDetail();
-        }
+        refreshUiAfterTasksChange();
       });
 
       li.querySelector(".edit-task").addEventListener("click", () => openTaskModal(task.id));
-      li.querySelector(".delete-task").addEventListener("click", () => {
+
+      li.querySelector(".delete-task").addEventListener("click", async () => {
         if (confirm(t("confirm.deleteTask"))) {
-          tasks = tasks.filter((x) => x.id !== task.id);
-          saveTasks();
+          const ok = await deleteTaskFromSupabase(task.id);
+          if (!ok) return;
+          tasks = await loadTasksFromSupabase();
+          syncPointsLedger();
           maybeUpdateBuddyRecord();
-          renderTasks();
-          renderDashboard();
-          renderMotivation();
-          renderCalendar();
-          renderDayDetail();
+          refreshUiAfterTasksChange();
         }
       });
 
@@ -5174,8 +5608,29 @@ async function loadUserProfile() {
 
   // ——— Modals ———
 
+  function populateShareScopeSelect(selectEl, selectedGroupId) {
+    if (!selectEl) return;
+    const want = selectedGroupId && groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : "";
+    selectEl.innerHTML = "";
+    const o0 = document.createElement("option");
+    o0.value = "";
+    o0.setAttribute("data-i18n", "share.scopePrivate");
+    o0.textContent = t("share.scopePrivate");
+    selectEl.appendChild(o0);
+    groups.forEach((g) => {
+      const o = document.createElement("option");
+      o.value = g.id;
+      o.textContent = g.name;
+      selectEl.appendChild(o);
+    });
+    selectEl.value = want;
+    applyDomI18n();
+  }
+
   function openTaskModal(id) {
     const isNew = !id;
+    const defaultGroup =
+      activeGroupId && groups.some((g) => g.id === activeGroupId) ? activeGroupId : null;
     const task = isNew
       ? {
           id: "",
@@ -5185,6 +5640,7 @@ async function loadUserProfile() {
           priority: "medium",
           dueDate: selectedDateStr || null,
           createdAt: Date.now(),
+          groupId: defaultGroup,
         }
       : tasks.find((x) => x.id === id);
 
@@ -5192,11 +5648,13 @@ async function loadUserProfile() {
 
     applyDomI18n();
     els.taskModalTitle.textContent = isNew ? t("taskModal.new") : t("taskModal.edit");
+    if (els.taskForm) els.taskForm.dataset.taskMode = isNew ? "create" : "edit";
     els.taskId.value = task.id || "";
     els.taskTitle.value = task.title || "";
     els.taskNotes.value = task.notes || "";
     els.taskPriority.value = task.priority || "medium";
     els.taskDue.value = task.dueDate || "";
+    populateShareScopeSelect(els.taskShareScope, task.groupId || null);
     els.taskCompleted.checked = !!task.completed;
     els.taskDelete.hidden = isNew;
     [...els.taskPriority.options].forEach((opt) => {
@@ -5316,6 +5774,8 @@ async function loadUserProfile() {
 
   function openEventModal(id) {
     const isNew = !id;
+    const defaultGroup =
+      activeGroupId && groups.some((g) => g.id === activeGroupId) ? activeGroupId : null;
     const ev = isNew
       ? {
           id: "",
@@ -5328,6 +5788,7 @@ async function loadUserProfile() {
           color: "violet",
           streakDone: false,
           createdAt: Date.now(),
+          groupId: defaultGroup,
         }
       : events.find((x) => x.id === id);
 
@@ -5336,11 +5797,13 @@ async function loadUserProfile() {
     ensureEventTimeSelectsPopulated();
     applyDomI18n();
     els.eventModalTitle.textContent = isNew ? t("eventModal.new") : t("eventModal.edit");
+    if (els.eventForm) els.eventForm.dataset.eventMode = isNew ? "create" : "edit";
     els.eventId.value = ev.id || "";
     els.eventTitle.value = ev.title || "";
     els.eventNotes.value = ev.notes || "";
     els.eventDate.value = ev.date;
     els.eventColor.value = ev.color || "violet";
+    populateShareScopeSelect(els.eventShareScope, ev.groupId || null);
     els.eventAllDay.checked = !!ev.allDay;
     setEventTimePickersFromStored(ev.startTime, ev.endTime, !!ev.allDay);
     if (els.eventStreakDone) els.eventStreakDone.checked = !!ev.streakDone;
@@ -5393,90 +5856,99 @@ async function loadUserProfile() {
 
   async function handleTaskSubmit(e) {
     e.preventDefault();
-    const id = els.taskId.value || crypto.randomUUID();
-    const existing = tasks.find((x) => x.id === id);
-    const completed = els.taskCompleted.checked;
-    const payload = {
-      id,
-      title: els.taskTitle.value.trim(),
-      notes: els.taskNotes.value.trim(),
-      priority: els.taskPriority.value,
-      dueDate: els.taskDue.value || null,
-      completed,
-      createdAt: existing ? existing.createdAt : Date.now(),
-    };
-    if (completed) {
-      payload.completedAt = formatYMD(new Date());
-      touchMeActivityYmd(payload.completedAt);
-    } else {
-      delete payload.completedAt;
-    }
-    if (!payload.title) return;
+    if (taskSubmitBusy) return;
+    taskSubmitBusy = true;
+    try {
+      const isEditMode = Boolean(String(els.taskId.value || "").trim());
+      const id = isEditMode ? String(els.taskId.value).trim() : crypto.randomUUID();
+      const existing = isEditMode ? tasks.find((x) => x.id === id) : null;
+      const completed = els.taskCompleted.checked;
+      const scopeGid = els.taskShareScope && els.taskShareScope.value ? els.taskShareScope.value.trim() : "";
+      const groupOk = scopeGid && groups.some((g) => g.id === scopeGid);
+      const payload = {
+        id,
+        title: els.taskTitle.value.trim(),
+        notes: els.taskNotes.value.trim(),
+        priority: els.taskPriority.value,
+        dueDate: els.taskDue.value || null,
+        completed,
+        createdAt: existing ? existing.createdAt : Date.now(),
+        groupId: groupOk ? scopeGid : null,
+      };
+      if (completed) {
+        payload.completedAt = existing && existing.completedAt ? existing.completedAt : formatYMD(new Date());
+      } else {
+        delete payload.completedAt;
+      }
+      if (!payload.title) return;
 
-    if (existing) {
-      const idx = tasks.findIndex((x) => x.id === id);
-      tasks[idx] = payload;
-    } else {
-      tasks.push(payload);
+      const ok = isEditMode ? await updateTaskToSupabase(payload) : await insertTaskToSupabase(payload);
+      if (!ok) return;
+      if (completed && payload.completedAt) touchMeActivityYmd(payload.completedAt);
+
+      tasks = await loadTasksFromSupabase();
+      syncPointsLedger();
+      maybeUpdateBuddyRecord();
+      refreshAchievements(true);
+      closeTaskModal();
+      refreshUiAfterTasksChange();
+    } finally {
+      taskSubmitBusy = false;
     }
-    await saveTasks();
-    maybeUpdateBuddyRecord();
-    refreshAchievements(true);
-    closeTaskModal();
-    renderTasks();
-    renderDashboard();
-    renderMotivation();
-    renderCalendar();
-    renderDayDetail();
   }
 
-  function handleEventSubmit(e) {
+  async function handleEventSubmit(e) {
     e.preventDefault();
-    const id = els.eventId.value || uid();
-    const existing = events.find((x) => x.id === id);
-    const allDay = els.eventAllDay.checked;
-    const streakDone = !allDay && els.eventStreakDone && els.eventStreakDone.checked;
-    const startStr = allDay ? null : getStartTimeFromPickers();
-    const endStr = allDay ? null : getEndTimeFromPickers();
-    const payload = {
-      id,
-      title: els.eventTitle.value.trim(),
-      notes: els.eventNotes.value.trim(),
-      date: els.eventDate.value,
-      allDay,
-      startTime: startStr || null,
-      endTime: endStr || null,
-      color: els.eventColor.value,
-      streakDone: !!streakDone,
-      createdAt: existing ? existing.createdAt : Date.now(),
-    };
-    if (!payload.title || !payload.date) return;
-    if (!allDay && !payload.startTime) {
-      showToast(t("eventModal.errStartRequired"));
-      try {
-        els.eventStartHour?.focus();
-      } catch (_) {}
-      return;
-    }
+    if (eventSubmitBusy) return;
+    eventSubmitBusy = true;
+    try {
+      const isEditMode = Boolean(String(els.eventId.value || "").trim());
+      const id = isEditMode ? String(els.eventId.value).trim() : crypto.randomUUID();
+      const existing = isEditMode ? events.find((x) => x.id === id) : null;
+      const allDay = els.eventAllDay.checked;
+      const streakDone = !allDay && els.eventStreakDone && els.eventStreakDone.checked;
+      const startStr = allDay ? null : getStartTimeFromPickers();
+      const endStr = allDay ? null : getEndTimeFromPickers();
+      const scopeGid = els.eventShareScope && els.eventShareScope.value ? els.eventShareScope.value.trim() : "";
+      const groupOk = scopeGid && groups.some((g) => g.id === scopeGid);
+      const payload = {
+        id,
+        title: els.eventTitle.value.trim(),
+        notes: els.eventNotes.value.trim(),
+        date: els.eventDate.value,
+        allDay,
+        startTime: startStr || null,
+        endTime: endStr || null,
+        color: els.eventColor.value,
+        streakDone: !!streakDone,
+        createdAt: existing ? existing.createdAt : Date.now(),
+        groupId: groupOk ? scopeGid : null,
+      };
+      if (!payload.title || !payload.date) return;
+      if (!allDay && !payload.startTime) {
+        showToast(t("eventModal.errStartRequired"));
+        try {
+          els.eventStartHour?.focus();
+        } catch (_) {}
+        return;
+      }
 
-    if (existing) {
-      const idx = events.findIndex((x) => x.id === id);
-      events[idx] = payload;
-    } else {
-      events.push(payload);
+      const ok = isEditMode ? await updateEventToSupabase(payload) : await insertEventToSupabase(payload);
+      if (!ok) return;
+      if (payload.streakDone) {
+        touchMeActivityYmd(payload.date);
+        maybeUpdateBuddyRecord();
+      }
+
+      events = await loadEventsFromSupabase();
+      syncPointsLedger();
+      refreshAchievements(true);
+      closeEventModal();
+      selectedDateStr = payload.date;
+      refreshUiAfterEventsChange();
+    } finally {
+      eventSubmitBusy = false;
     }
-    saveEvents();
-    if (payload.streakDone) {
-      touchMeActivityYmd(payload.date);
-      maybeUpdateBuddyRecord();
-    }
-    refreshAchievements(true);
-    closeEventModal();
-    selectedDateStr = payload.date;
-    renderCalendar();
-    renderDayDetail();
-    renderDashboard();
-    renderMotivation();
   }
 
   // ——— Theme ———
@@ -5515,6 +5987,15 @@ async function loadUserProfile() {
   /** @type {{ userId: string, email: string, name: string, provider: string } | null} */
   let authSession = null;
   let mainAppInitialized = false;
+  /** Prevents duplicate task modal / form listeners if init ever re-ran */
+  let taskModalBindingsInitialized = false;
+  let taskSubmitBusy = false;
+  let eventModalBindingsInitialized = false;
+  let eventSubmitBusy = false;
+  let tasksRealtimeChannel = null;
+  let eventsRealtimeChannel = null;
+  let refreshTasksRealtimeTimer = 0;
+  let refreshEventsRealtimeTimer = 0;
 
   function loadAuthUsers() {
     authUsers = loadJSON(STORAGE_USERS, []);
@@ -5619,10 +6100,11 @@ async function loadUserProfile() {
     applyDomI18n();
     if (!mainAppInitialized) {
       mainAppInitialized = true;
-      runMainAppInit();
+      await runMainAppInit();
     } else {
       initAvatarPicker();
       applyProfileAvatars();
+      void startSupabaseRealtime();
     }
     updateAccountSettingsLabel();
     maybeShowCookieBar();
@@ -5638,6 +6120,7 @@ async function loadUserProfile() {
   }
 
   function logoutUser() {
+    void stopSupabaseRealtime();
     try {
       sessionStorage.removeItem(WELCOME_SESSION_KEY);
     } catch (_) {}
@@ -5891,25 +6374,146 @@ async function loadUserProfile() {
     initLanguage();
     initAuthAndCookieListeners();
 
-    const { data } = await supabase.auth.getSession();
+    let session = null;
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (!error && data?.session) session = data.session;
+    } catch (e) {
+      console.error("auth.getSession:", e);
+    }
 
-if (!data.session) {
-  showAuthScreen();
-  applyDomI18n();
-  return;
-}
+    if (!session) {
+      showAuthScreen();
+      applyDomI18n();
+      return;
+    }
 
-document.getElementById("authGate").hidden = true;
-document.getElementById("app").hidden = false;
+    document.getElementById("authGate").hidden = true;
+    document.getElementById("app").hidden = false;
 
     hideAuthScreen();
     authSession = readSessionRaw();
-    runMainAppInit();
+    await runMainAppInit();
     maybeShowCookieBar();
     setTimeout(() => maybeShowWelcomeModal(), 300);
   }
 
-  function runMainAppInit() {
+  async function stopSupabaseRealtime() {
+    try {
+      if (tasksRealtimeChannel) {
+        await supabase.removeChannel(tasksRealtimeChannel);
+        tasksRealtimeChannel = null;
+      }
+      if (eventsRealtimeChannel) {
+        await supabase.removeChannel(eventsRealtimeChannel);
+        eventsRealtimeChannel = null;
+      }
+    } catch (err) {
+      console.error("Supabase realtime stop:", err);
+    }
+    if (refreshTasksRealtimeTimer) {
+      clearTimeout(refreshTasksRealtimeTimer);
+      refreshTasksRealtimeTimer = 0;
+    }
+    if (refreshEventsRealtimeTimer) {
+      clearTimeout(refreshEventsRealtimeTimer);
+      refreshEventsRealtimeTimer = 0;
+    }
+  }
+
+  async function reloadTasksAfterRemoteChange() {
+    try {
+      tasks = await loadTasksFromSupabase();
+      syncPointsLedger();
+      renderTasks();
+      renderDashboard();
+      renderMotivation();
+      if (currentView === "calendar") {
+        renderCalendar();
+        renderDayDetail();
+      }
+      refreshCoachBanner();
+    } catch (err) {
+      console.error("Task reload after realtime:", err);
+    }
+  }
+
+  async function reloadEventsAfterRemoteChange() {
+    try {
+      events = await loadEventsFromSupabase();
+      syncPointsLedger();
+      refreshUiAfterEventsChange();
+    } catch (err) {
+      console.error("Event reload after realtime:", err);
+    }
+  }
+
+  function scheduleTasksRealtimeReload() {
+    if (refreshTasksRealtimeTimer) clearTimeout(refreshTasksRealtimeTimer);
+    refreshTasksRealtimeTimer = window.setTimeout(() => {
+      refreshTasksRealtimeTimer = 0;
+      void reloadTasksAfterRemoteChange();
+    }, 200);
+  }
+
+  function scheduleEventsRealtimeReload() {
+    if (refreshEventsRealtimeTimer) clearTimeout(refreshEventsRealtimeTimer);
+    refreshEventsRealtimeTimer = window.setTimeout(() => {
+      refreshEventsRealtimeTimer = 0;
+      void reloadEventsAfterRemoteChange();
+    }, 200);
+  }
+
+  async function startSupabaseRealtime() {
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) return;
+
+      await stopSupabaseRealtime();
+
+      const groupIds = await fetchMySupabaseGroupIds(userId);
+
+      let taskCh = supabase.channel(`flow-tasks-${userId}`).on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tasks", filter: `user_id=eq.${userId}` },
+        () => scheduleTasksRealtimeReload()
+      );
+      groupIds.forEach((gid) => {
+        taskCh = taskCh.on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "tasks", filter: `group_id=eq.${gid}` },
+          () => scheduleTasksRealtimeReload()
+        );
+      });
+      tasksRealtimeChannel = taskCh.subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("Tasks realtime:", status, err?.message || err);
+        }
+      });
+
+      let evCh = supabase.channel(`flow-events-${userId}`).on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "events", filter: `user_id=eq.${userId}` },
+        () => scheduleEventsRealtimeReload()
+      );
+      groupIds.forEach((gid) => {
+        evCh = evCh.on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "events", filter: `group_id=eq.${gid}` },
+          () => scheduleEventsRealtimeReload()
+        );
+      });
+      eventsRealtimeChannel = evCh.subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("Events realtime:", status, err?.message || err);
+        }
+      });
+    } catch (err) {
+      console.error("Supabase realtime start:", err);
+    }
+  }
+
+  async function runMainAppInit() {
     attachSystemThemeListener();
     if (els.profileDisplayName) els.profileDisplayName.value = profile.displayName;
     initAvatarPicker();
@@ -6141,13 +6745,13 @@ document.getElementById("app").hidden = false;
       e.target.value = "";
     });
 
-    els.btnJoinGroup?.addEventListener("click", () => {
-      const ok = joinGroupByCode(els.groupJoinCode?.value || "");
+    els.btnJoinGroup?.addEventListener("click", async () => {
+      const ok = await joinGroupByCode(els.groupJoinCode?.value || "");
       if (!ok) showToast(t("groups.invalidCode"));
     });
 
     els.btnLeaveGroup?.addEventListener("click", () => {
-      if (confirm(t("groups.leave") + "?")) leaveGroup();
+      if (confirm(t("groups.leave") + "?")) void leaveGroup();
     });
 
     els.btnCopyGroupCode?.addEventListener("click", async () => {
@@ -6167,51 +6771,54 @@ document.getElementById("app").hidden = false;
       } catch (_) {}
     });
 
-    setInterval(runReminderTick, 30000);
+    setInterval(runReminderTick, 60000);
     runReminderTick();
 
-    els.taskForm.addEventListener("submit", handleTaskSubmit);
-    els.taskCancel.addEventListener("click", closeTaskModal);
-    els.taskModalClose.addEventListener("click", closeTaskModal);
-    els.taskModalBackdrop.addEventListener("click", closeTaskModal);
-    els.taskDelete.addEventListener("click", () => {
-      const id = els.taskId.value;
-      if (!id) return;
-      if (confirm(t("confirm.deleteTask"))) {
-        tasks = tasks.filter((x) => x.id !== id);
-        saveTasks();
-        maybeUpdateBuddyRecord();
-        refreshAchievements(false);
-        closeTaskModal();
-        renderTasks();
-        renderDashboard();
-        renderMotivation();
-        renderCalendar();
-        renderDayDetail();
-      }
-    });
+    if (!taskModalBindingsInitialized) {
+      taskModalBindingsInitialized = true;
+      els.taskForm.addEventListener("submit", handleTaskSubmit);
+      els.taskCancel.addEventListener("click", closeTaskModal);
+      els.taskModalClose.addEventListener("click", closeTaskModal);
+      els.taskModalBackdrop.addEventListener("click", closeTaskModal);
+      els.taskDelete.addEventListener("click", async () => {
+        const id = els.taskId.value;
+        if (!id) return;
+        if (confirm(t("confirm.deleteTask"))) {
+          const ok = await deleteTaskFromSupabase(id);
+          if (!ok) return;
+          tasks = await loadTasksFromSupabase();
+          syncPointsLedger();
+          maybeUpdateBuddyRecord();
+          refreshAchievements(false);
+          closeTaskModal();
+          refreshUiAfterTasksChange();
+        }
+      });
+    }
 
-    els.eventForm.addEventListener("submit", handleEventSubmit);
-    els.eventCancel.addEventListener("click", closeEventModal);
-    els.eventModalClose.addEventListener("click", closeEventModal);
-    els.eventModalBackdrop.addEventListener("click", closeEventModal);
-    els.eventAllDay.addEventListener("change", toggleEventTimeRow);
-    els.eventEndHour?.addEventListener("change", syncEventEndMinEnabled);
-    els.eventDelete.addEventListener("click", () => {
-      const id = els.eventId.value;
-      if (!id) return;
-      if (confirm(t("confirm.deleteEvent"))) {
-        events = events.filter((x) => x.id !== id);
-        saveEvents();
-        maybeUpdateBuddyRecord();
-        refreshAchievements(false);
-        closeEventModal();
-        renderCalendar();
-        renderDayDetail();
-        renderDashboard();
-        renderMotivation();
-      }
-    });
+    if (!eventModalBindingsInitialized) {
+      eventModalBindingsInitialized = true;
+      els.eventForm.addEventListener("submit", handleEventSubmit);
+      els.eventCancel.addEventListener("click", closeEventModal);
+      els.eventModalClose.addEventListener("click", closeEventModal);
+      els.eventModalBackdrop.addEventListener("click", closeEventModal);
+      els.eventAllDay.addEventListener("change", toggleEventTimeRow);
+      els.eventEndHour?.addEventListener("change", syncEventEndMinEnabled);
+      els.eventDelete.addEventListener("click", async () => {
+        const id = els.eventId.value;
+        if (!id) return;
+        if (confirm(t("confirm.deleteEvent"))) {
+          const ok = await deleteEventFromSupabase(id);
+          if (!ok) return;
+          events = await loadEventsFromSupabase();
+          syncPointsLedger();
+          maybeUpdateBuddyRecord();
+          refreshAchievements(false);
+          closeEventModal();
+          refreshUiAfterEventsChange();
+        }
+      });
+    }
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
@@ -6226,14 +6833,32 @@ document.getElementById("app").hidden = false;
     });
 
     refreshAchievements(false);
-    if (!parseJoinFromQuery()) setView(appPrefs.defaultView || "dashboard");
+    const openedJoinLink = await parseJoinFromQuery();
+    if (!openedJoinLink) setView(appPrefs.defaultView || "dashboard");
     renderTasks();
     renderSelfcare();
     renderFocus();
     renderAchievements();
     renderDayDetail();
+
+    void startSupabaseRealtime();
+    scheduleFirstRunNotificationPermission();
   }
 
-  
- init();
+  let flowServiceWorkerRegistrationDone = false;
+  function registerFlowServiceWorker() {
+    if (flowServiceWorkerRegistrationDone) return;
+    flowServiceWorkerRegistrationDone = true;
+    if (!("serviceWorker" in navigator)) return;
+    const register = () => {
+      navigator.serviceWorker.register("/service-worker.js", { scope: "/" }).catch((err) => {
+        console.error("Service worker registration failed:", err);
+      });
+    };
+    if (document.readyState === "complete") register();
+    else window.addEventListener("load", register, { once: true });
+  }
+
+  registerFlowServiceWorker();
+  init();
 })();

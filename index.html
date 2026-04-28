@@ -1062,7 +1062,7 @@
 
             <section class="settings-section settings-panel" id="settings-section-privacy" role="tabpanel" aria-labelledby="settingsPrivacyHeading" hidden>
               <h3 class="settings-section-title" id="settingsPrivacyHeading" data-i18n="settings.privacyTitle">Privacy &amp; security</h3>
-              <p class="settings-hint" data-i18n="settings.privacyIntro">What we store locally.</p>
+              <p class="settings-hint" data-i18n="settings.privacyIntro">Data is synced securely via Supabase.</p>
               <p class="muted small" data-i18n="settings.securityHint">Security note.</p>
               <button type="button" class="btn btn-ghost btn-block" id="btnCookiePrefs" data-i18n="settings.openCookies">Cookie preferences</button>
               <button type="button" class="btn btn-ghost btn-block" id="btnOpenPrivacyFromSettings" data-i18n="auth.privacy">Privacy policy</button>
@@ -1201,7 +1201,7 @@
         <h2 id="taskModalTitle">New task</h2>
         <button type="button" class="modal-close" id="taskModalClose" data-i18n-aria="aria.closeDialog" aria-label="Close dialog">&times;</button>
       </header>
-      <form id="taskForm" class="modal-body">
+      <form id="taskForm" class="modal-body" novalidate>
         <input type="hidden" id="taskId" />
         <label class="field">
           <span data-i18n="taskModal.titleLabel">Title</span>
@@ -1237,7 +1237,7 @@
           <button type="button" class="btn btn-ghost" id="taskDelete" hidden data-i18n="common.delete">Delete</button>
           <div class="modal-foot-spacer"></div>
           <button type="button" class="btn btn-ghost" id="taskCancel" data-i18n="common.cancel">Cancel</button>
-          <button type="submit" class="btn btn-primary" data-i18n="common.save">Save</button>
+          <button type="submit" class="btn btn-primary" id="btnTaskSave" form="taskForm" data-i18n="common.save">Save</button>
         </footer>
       </form>
     </div>

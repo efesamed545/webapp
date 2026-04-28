@@ -1,6 +1,6 @@
 /**
  * Flow — Tasks & Calendar
- * Single-page app: localStorage persistence, no backend.
+ * SPA: Supabase for cloud data; theme/language prefs in localStorage.
  */
 (function () {
   "use strict";
@@ -46,17 +46,21 @@ async function getCurrentUserId() {
 }
 
 function mapTaskFromSupabase(row) {
-  return {
+  const completed = Boolean(row.completed);
+  const out = {
     id: row.id,
     title: String(row.title || ""),
     notes: String(row.notes || ""),
     priority: row.priority || "medium",
     dueDate: row.due_date || null,
-    completed: Boolean(row.completed),
+    completed,
     createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-    groupId: row.group_id || null,
-    ...(row.completed_at ? { completedAt: String(row.completed_at).slice(0, 10) } : {}),
+    groupId: (row.group_id && String(row.group_id).trim()) || null,
   };
+  if (completed && row.completed_at) {
+    out.completedAt = String(row.completed_at).slice(0, 10);
+  }
+  return out;
 }
 
 /** Full row for INSERT into `tasks` */
@@ -71,7 +75,7 @@ function mapTaskToSupabase(task, userId) {
     completed: Boolean(task.completed),
     completed_at: task.completed ? task.completedAt || null : null,
     created_at: task.createdAt ? new Date(task.createdAt).toISOString() : new Date().toISOString(),
-    group_id: task.groupId || null,
+    group_id: (task.groupId && String(task.groupId).trim()) || null,
   };
 }
 
@@ -84,7 +88,7 @@ function mapTaskToSupabaseUpdate(task) {
     due_date: task.dueDate || null,
     completed: Boolean(task.completed),
     completed_at: task.completed ? task.completedAt || null : null,
-    group_id: task.groupId || null,
+    group_id: (task.groupId && String(task.groupId).trim()) || null,
   };
 }
 
@@ -209,20 +213,11 @@ async function loadTasksFromSupabase(groupIdsPreloaded) {
   const { data, error } = await q.order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Fehler beim Laden der Tasks:", error.message);
-    try {
-      const raw = localStorage.getItem(STORAGE_TASKS);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (_) {}
+    console.error("Fehler beim Laden der Tasks:", error);
     return [];
   }
 
-  const mapped = (data || []).map(mapTaskFromSupabase);
-  localStorage.setItem(STORAGE_TASKS, JSON.stringify(mapped));
-  return mapped;
+  return (data || []).map(mapTaskFromSupabase);
 }
 
 /**
@@ -246,19 +241,10 @@ async function loadEventsFromSupabase(groupIdsPreloaded) {
 
   if (error) {
     console.error("Fehler beim Laden der Events:", error.message);
-    try {
-      const raw = localStorage.getItem(STORAGE_EVENTS);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (_) {}
     return [];
   }
 
-  const mapped = (data || []).map(mapEventFromSupabase);
-  localStorage.setItem(STORAGE_EVENTS, JSON.stringify(mapped));
-  return mapped;
+  return (data || []).map(mapEventFromSupabase);
 }
 async function saveUserProfile() {
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -337,13 +323,8 @@ async function loadUserProfile() {
   return data;
 }
   // ——— Storage keys ———
-  const STORAGE_TASKS = "flow_tasks";
-  const STORAGE_EVENTS = "flow_events";
   const STORAGE_THEME = "flow_theme";
   const STORAGE_LANG = "flow_lang";
-  const STORAGE_GROUPS = "flow_groups";
-  const STORAGE_GROUP_MEMBERSHIP = "flow_group_membership";
-  const STORAGE_BUDDY = "flow_buddy";
   const STORAGE_PROFILE = "flow_profile";
   const STORAGE_REMINDED = "flow_reminded_events";
   /** Set after first automatic browser notification permission prompt (one-time per device). */
@@ -352,12 +333,7 @@ async function loadUserProfile() {
   const STORAGE_SESSION = "flow_auth_session";
   const STORAGE_USERS = "flow_auth_users";
   const STORAGE_COOKIE_CONSENT = "flow_cookie_consent_v1";
-  /** Monthly points ledger (derived from tasks/events; rebuilt on sync) */
-  const STORAGE_POINTS_LEDGER = "flow_points_ledger_v1";
   const STORAGE_APP_PREFS = "flow_app_prefs_v1";
-  const STORAGE_SELFCARE_JOURNAL = "flow_selfcare_journal_v1";
-  const STORAGE_ACHIEVEMENTS = "flow_achievements_v1";
-  const STORAGE_FOCUS_HISTORY = "flow_focus_history_v1";
   /** Last-opened settings category (sidebar tab id) */
   const STORAGE_SETTINGS_ACTIVE_PANEL = "flow_settings_active_panel_v1";
   const DEFAULT_SETTINGS_PANEL_ID = "settings-section-account";
@@ -481,6 +457,8 @@ async function loadUserProfile() {
       "taskModal.placeholderTitle": "What needs to be done?",
       "taskModal.priorityLabel": "Priority",
       "taskModal.titleLabel": "Title",
+      "taskModal.saveFailed": "Couldn’t save the task. See the browser console for details.",
+      "taskModal.titleRequired": "Please enter a title.",
       "tasks.createTask": "Create task",
       "tasks.delete": "Delete",
       "tasks.duePrefix": "Due",
@@ -584,6 +562,8 @@ async function loadUserProfile() {
       "taskModal.placeholderTitle": "Was ist zu erledigen?",
       "taskModal.priorityLabel": "Priorität",
       "taskModal.titleLabel": "Titel",
+      "taskModal.saveFailed": "Die Aufgabe konnte nicht gespeichert werden. Details in der Browser-Konsole.",
+      "taskModal.titleRequired": "Bitte einen Titel eingeben.",
       "tasks.createTask": "Aufgabe erstellen",
       "tasks.delete": "Löschen",
       "tasks.duePrefix": "Fällig",
@@ -1262,13 +1242,15 @@ async function loadUserProfile() {
     "settings.reduceMotion": "Reduce motion",
     "settings.privacyTitle": "Privacy & security",
     "settings.privacyIntro":
-      "Flow stores tasks, events, groups, and preferences in your browser on this device. With an account, email and a password hash are kept locally in this demo (no cloud sync until you add a backend).",
+      "Your tasks, events, groups, journal, focus history, achievements, buddy, and points are stored securely in Supabase and synced to this device. Theme, language, and app preferences stay locally.",
     "settings.securityHint": "Use a strong password and lock your device. For production, connect a real authentication API.",
     "settings.clearData": "Clear app data on this device",
-    "settings.clearDataHint": "Removes tasks, events, groups, buddy data, and reminders cache. Your account session and profile stay unless you sign out or delete the account.",
+    "settings.clearDataHint":
+      "Deletes your tasks, events, self-care entries, focus sessions, achievements, buddy state, and points log in Supabase for this account. Theme, language, and app preferences are kept.",
     "settings.clearDataConfirm":
-      "Delete all tasks, events, groups, and related local data on this device? Your login session stays active.",
-    "settings.clearDataDone": "Local app data was cleared.",
+      "Delete all your Flow data in the cloud (tasks, events, journal, focus, achievements, buddy, points) for this account? Your login session stays active.",
+    "settings.clearDataDone": "Your cloud data was deleted.",
+    "settings.clearDataNeedAuth": "Please sign in to clear cloud data.",
     "settings.openCookies": "Cookie preferences",
     "settings.groupsIntro": "Your active group. Manage invites from here or in the Groups tab.",
     "settings.manageInGroups": "Open Groups tab",
@@ -1548,13 +1530,15 @@ async function loadUserProfile() {
     "settings.reduceMotion": "Weniger Bewegung",
     "settings.privacyTitle": "Datenschutz & Sicherheit",
     "settings.privacyIntro":
-      "Flow speichert Aufgaben, Termine, Gruppen und Einstellungen in deinem Browser auf diesem Gerät. Mit Konto bleiben E-Mail und Passwort-Hash lokal (Demo ohne Cloud).",
+      "Aufgaben, Termine, Gruppen, Self-Care, Fokus-Historie, Erfolge, Buddy und Punkte werden sicher über Supabase synchronisiert. Theme, Sprache und App-Einstellungen bleiben lokal auf dem Gerät.",
     "settings.securityHint": "Nutze ein starkes Passwort und sperre dein Gerät. Für den Live-Betrieb eine echte Auth-API anbinden.",
     "settings.clearData": "App-Daten auf diesem Gerät löschen",
-    "settings.clearDataHint": "Entfernt Aufgaben, Termine, Gruppen, Buddy-Daten und Erinnerungs-Cache. Die Anmeldung und dein Profil bleiben, bis du dich abmeldest oder das Konto löschst.",
+    "settings.clearDataHint":
+      "Löscht in Supabase deine Aufgaben, Termine, Self-Care-Einträge, Fokus-Sessions, Erfolge, Buddy-Zustand und Punkte-Log für dieses Konto. Theme, Sprache und App-Einstellungen bleiben erhalten.",
     "settings.clearDataConfirm":
-      "Alle Aufgaben, Termine, Gruppen und zugehörigen lokalen Daten löschen? Die Anmeldung bleibt aktiv.",
-    "settings.clearDataDone": "Lokale App-Daten wurden gelöscht.",
+      "Alle Flow-Daten in der Cloud (Aufgaben, Termine, Journal, Fokus, Erfolge, Buddy, Punkte) für dieses Konto löschen? Die Anmeldung bleibt aktiv.",
+    "settings.clearDataDone": "Deine Cloud-Daten wurden gelöscht.",
+    "settings.clearDataNeedAuth": "Bitte melde dich an, um Cloud-Daten zu löschen.",
     "settings.openCookies": "Cookie-Einstellungen",
     "settings.groupsIntro": "Deine aktive Gruppe. Einladungen hier oder unter Gruppen verwalten.",
     "settings.manageInGroups": "Zur Gruppen-Ansicht",
@@ -2046,7 +2030,7 @@ async function loadUserProfile() {
     "cookie.settingsTitle": "Cookie preferences",
     "cookie.settingsIntro": "Necessary cookies are always active. You can opt in to optional categories below.",
     "cookie.catNecessary": "Necessary",
-    "cookie.catNecessaryDesc": "Session, language, theme, and app state. Required.",
+    "cookie.catNecessaryDesc": "Session, language, theme, and app preferences. Required.",
     "cookie.alwaysOn": "Always on",
     "cookie.catAnalytics": "Analytics",
     "cookie.catAnalyticsDesc": "Anonymous usage statistics to improve Flow.",
@@ -2055,16 +2039,17 @@ async function loadUserProfile() {
     "cookie.savePrefs": "Save preferences",
     "cookie.openSettings": "Cookie preferences",
     "account.title": "Account",
-    "account.signedInHint": "Signed in securely. Session is stored locally.",
+    "account.signedInHint": "Signed in. Your productivity data is synced securely via Supabase.",
     "account.logout": "Log out",
     "account.deleteAccount": "Delete account…",
-    "account.deleteConfirm": "Delete your account and local sign-in data? Your tasks and events stay in this browser until you clear data.",
+    "account.deleteConfirm": "Delete your account and sign-in data on this device? Cloud data remains until you use “Clear app data” while signed in.",
     "account.deleted": "Account removed from this device.",
     "account.loggedOut": "Logged out",
     "account.welcome": "Welcome back",
     "legal.privacyTitle": "Privacy policy",
     "legal.termsTitle": "Terms of use",
-    "legal.privacyBody": "<h3>Data we process</h3><p>Flow stores tasks, events, and preferences locally in your browser. With an account, we store email and a password hash on this device only (no server in this demo).</p><h3>Your rights</h3><p>You may export or delete your data by clearing site storage or using Delete account.</p>",
+    "legal.privacyBody":
+      "<h3>Data we process</h3><p>Flow syncs tasks, events, groups, self-care, focus sessions, achievements, buddy state, and gamification points through Supabase. Theme, language, and UI preferences may be stored locally in your browser.</p><h3>Your rights</h3><p>You can delete cloud data in Settings while signed in, or remove your account from this device.</p>",
     "legal.termsBody": "<h3>Use of Flow</h3><p>Flow is provided as-is for personal productivity. Do not use it for unlawful purposes.</p><h3>Accounts</h3><p>You are responsible for your credentials. In production, connect a backend for recovery and security.</p>",
   });
 
@@ -2114,7 +2099,7 @@ async function loadUserProfile() {
     "cookie.settingsTitle": "Cookie-Einstellungen",
     "cookie.settingsIntro": "Notwendige Cookies sind immer aktiv. Weitere Kategorien optional.",
     "cookie.catNecessary": "Notwendig",
-    "cookie.catNecessaryDesc": "Sitzung, Sprache, Design. Erforderlich.",
+    "cookie.catNecessaryDesc": "Sitzung, Sprache, Theme und App-Einstellungen. Erforderlich.",
     "cookie.alwaysOn": "Immer aktiv",
     "cookie.catAnalytics": "Statistik",
     "cookie.catAnalyticsDesc": "Anonyme Nutzungsdaten zur Verbesserung.",
@@ -2123,16 +2108,17 @@ async function loadUserProfile() {
     "cookie.savePrefs": "Speichern",
     "cookie.openSettings": "Cookie-Einstellungen",
     "account.title": "Konto",
-    "account.signedInHint": "Angemeldet. Sitzung lokal gespeichert.",
+    "account.signedInHint": "Angemeldet. Nutzdaten werden sicher über Supabase synchronisiert.",
     "account.logout": "Abmelden",
     "account.deleteAccount": "Konto löschen…",
-    "account.deleteConfirm": "Konto und lokale Anmeldedaten löschen? Aufgaben und Termine bleiben im Browser, bis du Daten löschst.",
+    "account.deleteConfirm": "Konto und Anmeldedaten auf diesem Gerät löschen? Cloud-Daten bleiben, bis du eingeloggt „App-Daten löschen“ nutzt.",
     "account.deleted": "Konto auf diesem Gerät entfernt.",
     "account.loggedOut": "Abgemeldet",
     "account.welcome": "Willkommen zurück",
     "legal.privacyTitle": "Datenschutzerklärung",
     "legal.termsTitle": "Nutzungsbedingungen",
-    "legal.privacyBody": "<h3>Verarbeitete Daten</h3><p>Flow speichert Aufgaben, Termine und Einstellungen lokal im Browser. Mit Konto werden E-Mail und Passwort-Hash nur auf diesem Gerät gehalten (Demo ohne Server).</p><h3>Rechte</h3><p>Du kannst Daten löschen über Browser-Speicher oder „Konto löschen“.</p>",
+    "legal.privacyBody":
+      "<h3>Verarbeitete Daten</h3><p>Flow synchronisiert Aufgaben, Termine, Gruppen, Self-Care, Fokus, Erfolge, Buddy und Punkte über Supabase. Theme, Sprache und UI-Einstellungen können lokal im Browser gespeichert werden.</p><h3>Rechte</h3><p>Cloud-Daten kannst du in den Einstellungen löschen, solange du angemeldet bist, oder das Konto von diesem Gerät entfernen.</p>",
     "legal.termsBody": "<h3>Nutzung</h3><p>Flow wird „wie besehen“ für persönliche Produktivität bereitgestellt.</p><h3>Konten</h3><p>Du bist für Zugangsdaten verantwortlich. Für Produktion ein Backend anbinden.</p>",
   });
 
@@ -2206,21 +2192,30 @@ async function loadUserProfile() {
   async function clearLocalAppData() {
     if (!confirm(t("settings.clearDataConfirm"))) return;
     const userId = await getCurrentUserId();
-    if (userId) {
-      const [rt, re] = await Promise.all([
+    if (!userId) {
+      showToast(t("settings.clearDataNeedAuth"));
+      return;
+    }
+    try {
+      const ops = await Promise.all([
         supabase.from("tasks").delete().eq("user_id", userId),
         supabase.from("events").delete().eq("user_id", userId),
+        supabase.from("selfcare_entries").delete().eq("user_id", userId),
+        supabase.from("focus_sessions").delete().eq("user_id", userId),
+        supabase.from("achievements").delete().eq("user_id", userId),
+        supabase.from("buddy_state").delete().eq("user_id", userId),
+        supabase.from("points_log").delete().eq("user_id", userId),
+        supabase.from("group_members").delete().eq("user_id", userId),
       ]);
-      if (rt.error) console.error("Clear tasks in Supabase:", rt.error.message);
-      if (re.error) console.error("Clear events in Supabase:", re.error.message);
+      ops.forEach((r, i) => {
+        if (r.error) console.error(`clearLocalAppData op ${i}:`, r.error.message);
+      });
+    } catch (e) {
+      console.error("clearLocalAppData:", e);
     }
-    tasks = [];
-    events = [];
-    groups = [];
-    selfcareJournal = {};
-    achievementsState = { unlocked: {} };
-    focusHistory = [];
     activeGroupId = null;
+    appPrefs.activeGroupId = "";
+    saveAppPrefs();
     buddy = {
       partnerName: "",
       partnerActiveDates: [],
@@ -2228,20 +2223,21 @@ async function loadUserProfile() {
       lastPartnerYmd: null,
       lastMeYmd: null,
     };
+    void persistBuddyStateToSupabase();
+    pointsLogCache = [];
     try {
-      localStorage.removeItem(STORAGE_REMINDED);
-      localStorage.removeItem(STORAGE_NOTIF_FIRST_LAUNCH_ASKED);
-      localStorage.removeItem(STORAGE_GROUP_MEMBERSHIP);
-      localStorage.removeItem(STORAGE_POINTS_LEDGER);
-      localStorage.removeItem(STORAGE_SELFCARE_JOURNAL);
-      localStorage.removeItem(STORAGE_ACHIEVEMENTS);
-      localStorage.removeItem(STORAGE_FOCUS_HISTORY);
-      localStorage.setItem(STORAGE_TASKS, "[]");
-      localStorage.setItem(STORAGE_EVENTS, "[]");
-    } catch (_) {}
-    saveGroupsState();
-    saveBuddy();
-    syncPointsLedger();
+      await loadState();
+    } catch (e) {
+      console.error("clearLocalAppData reload:", e);
+      tasks = [];
+      events = [];
+      groups = [];
+      selfcareJournal = {};
+      achievementsState = { unlocked: {} };
+      achievementRowIds = {};
+      focusHistory = [];
+      pointsLogCache = [];
+    }
     closeSettingsModal();
     renderTasks();
     renderDashboard();
@@ -2250,7 +2246,7 @@ async function loadUserProfile() {
     renderAchievements();
     renderCalendar();
     renderDayDetail();
-    if (currentView === "groups") renderGroups();
+    if (currentView === "groups") await renderGroups();
     refreshCoachBanner();
     showToast(t("settings.clearDataDone"));
   }
@@ -2571,8 +2567,12 @@ async function loadUserProfile() {
   let selfcareActivePreviewYmd = "";
   /** @type {{ unlocked: Record<string,string> }} */
   let achievementsState = { unlocked: {} };
+  /** Maps achievement definition id → Supabase `achievements.id` (for deleteAchievement). */
+  let achievementRowIds = {};
   /** @type {Array<{id:string,taskId:string|null,taskTitle:string,durationMin:number,completed:boolean,startedAt:number,endedAt:number,mode:string,route:string}>} */
   let focusHistory = [];
+  /** Cached rows from `points_log` for group ranking / month totals (includes `id` for deletePointEntry). */
+  let pointsLogCache = [];
   const focusTimer = {
     selectedTaskId: "",
     durationSec: 25 * 60,
@@ -2617,6 +2617,8 @@ async function loadUserProfile() {
     buddyCardVisible: true,
     recapWeekEnabled: true,
     recapMonthEnabled: true,
+    /** Last selected group (Supabase); persisted in app prefs only. */
+    activeGroupId: "",
   };
   /** @type {typeof DEFAULT_APP_PREFS} */
   let appPrefs = { ...DEFAULT_APP_PREFS };
@@ -2956,34 +2958,101 @@ async function loadUserProfile() {
     }
   }
 
+  /** Log + stringify PostgREST / Supabase errors (full fields for Dashboard debugging). */
+  function logSupabasePostgrestError(context, error) {
+    if (error == null) {
+      console.error(context, "(error is null/undefined)");
+      return;
+    }
+    console.error(context, "raw error object:", error);
+    const code = error.code;
+    const message = error.message;
+    const details = error.details;
+    const hint = error.hint;
+    console.error(context, "error.code:", code);
+    console.error(context, "error.message:", message);
+    console.error(context, "error.details:", details);
+    console.error(context, "error.hint:", hint);
+    try {
+      const plain = { code, message, details, hint };
+      console.error(context, "error (JSON):", JSON.stringify(plain));
+    } catch (_) {}
+  }
+
+  function formatPostgrestErrorForUi(error, prefix) {
+    if (!error || typeof error !== "object") return prefix + String(error);
+    const parts = [prefix];
+    if (error.code != null) parts.push(`code=${error.code}`);
+    if (error.message) parts.push(error.message);
+    if (error.details) parts.push(`details: ${error.details}`);
+    if (error.hint) parts.push(`hint: ${error.hint}`);
+    return parts.join(" — ");
+  }
+
   async function insertTaskToSupabase(task) {
     const userId = await getCurrentUserId();
+    console.log("insertTaskToSupabase: current userId:", userId);
     if (!userId) {
-      console.error("Kein eingeloggter User für Task-Insert gefunden");
-      return false;
+      const msg = "Task insert: no authenticated user (userId is null — session missing?)";
+      console.error(msg);
+      throw new Error(msg);
     }
+
     const row = mapTaskToSupabase(task, userId);
-    const { error } = await supabase.from("tasks").insert([row]);
-    if (error) {
-      console.error("Fehler beim Anlegen der Task:", error.message);
-      return false;
+    console.log("insertTaskToSupabase: insert row (object):", row);
+    try {
+      console.log("insertTaskToSupabase: insert row (JSON):", JSON.stringify(row));
+    } catch (e) {
+      console.warn("insertTaskToSupabase: row JSON.stringify failed:", e);
     }
-    return true;
+    console.log("insertTaskToSupabase: user_id on row matches session:", row.user_id === userId);
+
+    const result = await supabase.from("tasks").insert([row]).select("*").single();
+    console.log("insertTaskToSupabase: full Supabase client result:", result);
+    console.log("insertTaskToSupabase: result.data:", result.data);
+    console.log("insertTaskToSupabase: result.error:", result.error);
+    if (result.count != null) console.log("insertTaskToSupabase: result.count:", result.count);
+    if (result.status != null) console.log("insertTaskToSupabase: result.status:", result.status);
+
+    const { data, error } = result;
+    if (error) {
+      logSupabasePostgrestError("insertTaskToSupabase: PostgREST error", error);
+      throw new Error(formatPostgrestErrorForUi(error, "Task insert failed."));
+    }
+    if (!data) {
+      const msg =
+        "Task insert: success but no row in response (often RLS blocking SELECT on RETURNING, or .single() got 0 rows). Check flow_tasks_select policy.";
+      console.error(msg, { result });
+      throw new Error(msg);
+    }
+    console.log("insertTaskToSupabase: inserted row from DB:", data);
+    return mapTaskFromSupabase(data);
   }
 
   async function updateTaskToSupabase(task) {
     const userId = await getCurrentUserId();
     if (!userId) {
       console.error("Kein eingeloggter User für Task-Update gefunden");
-      return false;
+      return null;
     }
     const patch = mapTaskToSupabaseUpdate(task);
-    const { error } = await supabase.from("tasks").update(patch).eq("id", task.id);
-    if (error) {
-      console.error("Fehler beim Aktualisieren der Task:", error.message);
-      return false;
+    console.log("Task Supabase update", { id: task.id, patch });
+    try {
+      const { data, error } = await supabase.from("tasks").update(patch).eq("id", task.id).select("*").single();
+      if (error) {
+        console.error("Task update failed:", error);
+        return null;
+      }
+      if (!data) {
+        console.error("Task update failed: no row returned (wrong id or RLS)");
+        return null;
+      }
+      console.log("Task update Supabase response row:", data);
+      return mapTaskFromSupabase(data);
+    } catch (e) {
+      console.error("updateTaskToSupabase:", e);
+      return null;
     }
-    return true;
   }
 
   async function deleteTaskFromSupabase(taskId) {
@@ -2992,12 +3061,28 @@ async function loadUserProfile() {
       console.error("Kein eingeloggter User für Task-Löschung gefunden");
       return false;
     }
-    const { error } = await supabase.from("tasks").delete().eq("id", taskId);
-    if (error) {
-      console.error("Fehler beim Löschen der Task:", error.message);
+    try {
+      const { data, error } = await supabase.from("tasks").delete().eq("id", taskId).select("id").single();
+      if (error) {
+        console.error("Task delete failed:", error);
+        return false;
+      }
+      if (!data) {
+        console.error("Task delete failed: no row removed (wrong id or RLS)");
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error("deleteTaskFromSupabase:", e);
       return false;
     }
-    return true;
+  }
+
+  /** Reload tasks from Supabase (same scope as loadState), reconcile points, refresh task UI. */
+  async function reloadTasksAndRender() {
+    tasks = await loadTasksFromSupabase(groups.map((g) => g.id));
+    await reconcilePointsLogWithSources();
+    refreshUiAfterTasksChange();
   }
 
   async function insertEventToSupabase(ev) {
@@ -3044,6 +3129,355 @@ async function loadUserProfile() {
     return true;
   }
 
+  async function loadSelfcareEntriesFromSupabase() {
+    selfcareJournal = {};
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase.from("selfcare_entries").select("day,body").eq("user_id", userId);
+      if (error) throw error;
+      (data || []).forEach((row) => {
+        const ymd = typeof row.day === "string" ? row.day : String(row.day || "").slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return;
+        try {
+          const parsed = JSON.parse(row.body || "{}");
+          selfcareJournal[ymd] = sanitizeSelfcareEntry(parsed);
+        } catch (_) {
+          selfcareJournal[ymd] = sanitizeSelfcareEntry({});
+        }
+      });
+    } catch (e) {
+      console.error("loadSelfcareEntriesFromSupabase:", e);
+    }
+  }
+
+  async function upsertSelfcareEntryToSupabase(ymd, payload) {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    const body = JSON.stringify(payload);
+    try {
+      const { error } = await supabase.from("selfcare_entries").upsert(
+        { user_id: userId, day: ymd, body, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,day" }
+      );
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error("upsertSelfcareEntryToSupabase:", e);
+      return false;
+    }
+  }
+
+  async function deleteSelfcareEntryFromSupabase(ymd) {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    try {
+      const { error } = await supabase.from("selfcare_entries").delete().eq("user_id", userId).eq("day", ymd);
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error("deleteSelfcareEntryFromSupabase:", e);
+      return false;
+    }
+  }
+
+  async function loadFocusSessionsFromSupabase() {
+    focusHistory = [];
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from("focus_sessions")
+        .select("id,duration,day,meta,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(120);
+      if (error) throw error;
+      focusHistory = (data || []).map((row) => {
+        const m = row.meta && typeof row.meta === "object" ? row.meta : {};
+        const dayStr = typeof row.day === "string" ? row.day : String(row.day || "").slice(0, 10);
+        const created = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+        return {
+          id: row.id,
+          taskId: m.taskId != null ? String(m.taskId) : null,
+          taskTitle: String(m.taskTitle || ""),
+          durationMin: Number(row.duration) || 0,
+          completed: Boolean(m.completed),
+          startedAt: Number(m.startedAt) || created,
+          endedAt: Number(m.endedAt) || created,
+          mode: String(m.mode || "classic"),
+          route: String(m.route || ""),
+        };
+      });
+    } catch (e) {
+      console.error("loadFocusSessionsFromSupabase:", e);
+    }
+  }
+
+  async function insertFocusSessionToSupabase(session) {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    const day = formatYMD(new Date(session.endedAt || session.startedAt || Date.now()));
+    const meta = {
+      taskId: session.taskId,
+      taskTitle: session.taskTitle,
+      completed: session.completed,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      mode: session.mode,
+      route: session.route,
+    };
+    try {
+      const { error } = await supabase.from("focus_sessions").insert({
+        id: session.id,
+        user_id: userId,
+        duration: Math.max(1, Math.round(Number(session.durationMin) || 1)),
+        day,
+        meta,
+        created_at: new Date(session.endedAt || Date.now()).toISOString(),
+      });
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error("insertFocusSessionToSupabase:", e);
+      return false;
+    }
+  }
+
+  async function loadAchievementsFromSupabase() {
+    achievementsState = { unlocked: {} };
+    achievementRowIds = {};
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase.from("achievements").select("id,key,unlocked_at").eq("user_id", userId);
+      if (error) throw error;
+      (data || []).forEach((row) => {
+        const k = String(row.key || "");
+        if (!k) return;
+        const at = row.unlocked_at ? String(row.unlocked_at).slice(0, 10) : formatYMD(new Date());
+        achievementsState.unlocked[k] = at;
+        if (row.id) achievementRowIds[k] = String(row.id);
+      });
+    } catch (e) {
+      console.error("loadAchievementsFromSupabase:", e);
+    }
+  }
+
+  async function unlockAchievementToSupabase(achKey, unlockedAtYmd) {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    try {
+      const { error } = await supabase.from("achievements").upsert(
+        {
+          user_id: userId,
+          key: achKey,
+          unlocked_at: `${unlockedAtYmd}T12:00:00.000Z`,
+        },
+        { onConflict: "user_id,key" }
+      );
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.error("unlockAchievementToSupabase:", e);
+      return false;
+    }
+  }
+
+  async function loadBuddyStateFromSupabase() {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase.from("buddy_state").select("mood,last_interaction").eq("user_id", userId).maybeSingle();
+      if (error) throw error;
+      if (data && data.mood) {
+        try {
+          const o = JSON.parse(data.mood);
+          if (o && typeof o === "object") {
+            buddy = {
+              partnerName: String(o.partnerName || ""),
+              partnerActiveDates: Array.isArray(o.partnerActiveDates) ? o.partnerActiveDates : [],
+              buddyLongest: Number(o.buddyLongest) || 0,
+              lastPartnerYmd: o.lastPartnerYmd || null,
+              lastMeYmd: o.lastMeYmd || null,
+            };
+            return;
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.error("loadBuddyStateFromSupabase:", e);
+    }
+  }
+
+  async function persistBuddyStateToSupabase() {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    const mood = JSON.stringify({
+      partnerName: buddy.partnerName,
+      partnerActiveDates: buddy.partnerActiveDates,
+      buddyLongest: buddy.buddyLongest,
+      lastPartnerYmd: buddy.lastPartnerYmd,
+      lastMeYmd: buddy.lastMeYmd,
+    });
+    const lastTs =
+      buddy.lastMeYmd || buddy.lastPartnerYmd
+        ? new Date(`${buddy.lastMeYmd || buddy.lastPartnerYmd}T12:00:00`).toISOString()
+        : new Date().toISOString();
+    try {
+      const { error } = await supabase.from("buddy_state").upsert(
+        {
+          user_id: userId,
+          mood,
+          last_interaction: lastTs,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+      if (error) throw error;
+    } catch (e) {
+      console.error("persistBuddyStateToSupabase:", e);
+    }
+  }
+
+  async function loadPointsLogFromSupabase() {
+    pointsLogCache = [];
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase.from("points_log").select("id,points,source,day,ref_key").eq("user_id", userId);
+      if (error) throw error;
+      pointsLogCache = (data || []).map((r) => ({
+        id: r.id ? String(r.id) : "",
+        points: Number(r.points) || 0,
+        source: String(r.source || ""),
+        day: typeof r.day === "string" ? r.day : String(r.day || "").slice(0, 10),
+        ref_key: String(r.ref_key || ""),
+      }));
+    } catch (e) {
+      console.error("loadPointsLogFromSupabase:", e);
+    }
+  }
+
+  async function addPoints(points, source, dayYmd, refKey) {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    const p = Math.round(Number(points) || 0);
+    const rk = String(refKey || "").trim();
+    if (!p || !rk) return false;
+    const day = String(dayYmd || "").slice(0, 10);
+    try {
+      const { error } = await supabase.from("points_log").upsert(
+        {
+          user_id: userId,
+          points: p,
+          source: String(source || "manual"),
+          day: /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : formatYMD(new Date()),
+          ref_key: rk,
+        },
+        { onConflict: "user_id,ref_key" }
+      );
+      if (error) throw error;
+      await loadPointsLogFromSupabase();
+      return true;
+    } catch (e) {
+      console.error("addPoints:", e);
+      return false;
+    }
+  }
+
+  async function deleteFocusSession(id) {
+    const userId = await getCurrentUserId();
+    if (!userId || !id) return false;
+    try {
+      const { error } = await supabase.from("focus_sessions").delete().eq("user_id", userId).eq("id", id);
+      if (error) throw error;
+      await loadFocusSessionsFromSupabase();
+      return true;
+    } catch (e) {
+      console.error("deleteFocusSession:", e);
+      return false;
+    }
+  }
+
+  async function deleteAchievement(id) {
+    const userId = await getCurrentUserId();
+    if (!userId || !id) return false;
+    try {
+      const { error } = await supabase.from("achievements").delete().eq("user_id", userId).eq("id", id);
+      if (error) throw error;
+      await loadAchievementsFromSupabase();
+      return true;
+    } catch (e) {
+      console.error("deleteAchievement:", e);
+      return false;
+    }
+  }
+
+  async function resetAchievements() {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    try {
+      const { error } = await supabase.from("achievements").delete().eq("user_id", userId);
+      if (error) throw error;
+      achievementsState = { unlocked: {} };
+      achievementRowIds = {};
+      return true;
+    } catch (e) {
+      console.error("resetAchievements:", e);
+      return false;
+    }
+  }
+
+  async function resetBuddyState() {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    try {
+      const { error } = await supabase.from("buddy_state").delete().eq("user_id", userId);
+      if (error) throw error;
+      buddy = {
+        partnerName: "",
+        partnerActiveDates: [],
+        buddyLongest: 0,
+        lastPartnerYmd: null,
+        lastMeYmd: null,
+      };
+      await persistBuddyStateToSupabase();
+      return true;
+    } catch (e) {
+      console.error("resetBuddyState:", e);
+      return false;
+    }
+  }
+
+  async function deletePointEntry(id) {
+    const userId = await getCurrentUserId();
+    if (!userId || !id) return false;
+    try {
+      const { error } = await supabase.from("points_log").delete().eq("user_id", userId).eq("id", id);
+      if (error) throw error;
+      await loadPointsLogFromSupabase();
+      return true;
+    } catch (e) {
+      console.error("deletePointEntry:", e);
+      return false;
+    }
+  }
+
+  async function resetPoints() {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+    try {
+      const { error } = await supabase.from("points_log").delete().eq("user_id", userId);
+      if (error) throw error;
+      pointsLogCache = [];
+      return true;
+    } catch (e) {
+      console.error("resetPoints:", e);
+      return false;
+    }
+  }
+
   function sanitizeSelfcareEntry(raw) {
     const src = raw && typeof raw === "object" ? raw : {};
     return {
@@ -3057,42 +3491,23 @@ async function loadUserProfile() {
     };
   }
 
-  function saveSelfcareJournal() {
-    localStorage.setItem(STORAGE_SELFCARE_JOURNAL, JSON.stringify(selfcareJournal));
-  }
-
-  function saveAchievementsState() {
-    localStorage.setItem(STORAGE_ACHIEVEMENTS, JSON.stringify(achievementsState));
-  }
-
-  function saveFocusHistory() {
-    localStorage.setItem(STORAGE_FOCUS_HISTORY, JSON.stringify(focusHistory));
-  }
-
   async function loadGroupsFromSupabase() {
     const userId = await getCurrentUserId();
-    if (!userId) {
-      try {
-        localStorage.setItem(STORAGE_GROUPS, "[]");
-      } catch (_) {}
-      return [];
-    }
+    if (!userId) return [];
+    try {
     const { data: myRows, error: e1 } = await supabase.from("group_members").select("group_id").eq("user_id", userId);
     if (e1) {
       console.error("Load groups (membership):", e1.message);
-      return loadJSON(STORAGE_GROUPS, []);
+      return [];
     }
     const gids = [...new Set((myRows || []).map((r) => r.group_id).filter(Boolean))];
     if (!gids.length) {
-      try {
-        localStorage.setItem(STORAGE_GROUPS, "[]");
-      } catch (_) {}
       return [];
     }
     const { data: grps, error: e2 } = await supabase.from("groups").select("*").in("id", gids);
     if (e2 || !grps) {
       console.error("Load groups:", e2?.message);
-      return loadJSON(STORAGE_GROUPS, []);
+      return [];
     }
     let allMem = [];
     const { data: memRows, error: e3 } = await supabase
@@ -3107,7 +3522,7 @@ async function loadUserProfile() {
       allMem = (fallback || []).map((r) => ({ ...r, profiles: null }));
     }
 
-    const mapped = grps.map((row) => ({
+    return grps.map((row) => ({
       id: row.id,
       name: row.name,
       code: row.invite_code,
@@ -3124,10 +3539,10 @@ async function loadUserProfile() {
           };
         }),
     }));
-    try {
-      localStorage.setItem(STORAGE_GROUPS, JSON.stringify(mapped));
-    } catch (_) {}
-    return mapped;
+    } catch (e) {
+      console.error("loadGroupsFromSupabase:", e);
+      return [];
+    }
   }
 
   async function loadState() {
@@ -3138,36 +3553,15 @@ async function loadUserProfile() {
     events = await loadEventsFromSupabase(myGroupIds);
     if (!Array.isArray(tasks)) tasks = [];
     if (!Array.isArray(events)) events = [];
-    const rawJournal = loadJSON(STORAGE_SELFCARE_JOURNAL, {});
-    selfcareJournal = {};
-    if (rawJournal && typeof rawJournal === "object") {
-      Object.entries(rawJournal).forEach(([ymd, entry]) => {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) selfcareJournal[ymd] = sanitizeSelfcareEntry(entry);
-      });
-    }
-    const rawAchievements = loadJSON(STORAGE_ACHIEVEMENTS, null);
-    achievementsState = { unlocked: {} };
-    if (rawAchievements && typeof rawAchievements === "object" && rawAchievements.unlocked && typeof rawAchievements.unlocked === "object") {
-      Object.entries(rawAchievements.unlocked).forEach(([id, value]) => {
-        if (ACHIEVEMENT_DEFS.some((d) => d.id === id)) achievementsState.unlocked[id] = String(value || "");
-      });
-    }
-    const rawFocus = loadJSON(STORAGE_FOCUS_HISTORY, []);
-    focusHistory = Array.isArray(rawFocus) ? rawFocus.slice(0, 200) : [];
-    activeGroupId = localStorage.getItem(STORAGE_GROUP_MEMBERSHIP) || null;
+    await loadSelfcareEntriesFromSupabase();
+    await loadFocusSessionsFromSupabase();
+    await loadAchievementsFromSupabase();
+    await loadBuddyStateFromSupabase();
+    await loadPointsLogFromSupabase();
+    activeGroupId = String(appPrefs.activeGroupId || "").trim() || null;
     if (activeGroupId && !groups.some((g) => g.id === activeGroupId)) {
       activeGroupId = null;
       saveGroupsState();
-    }
-    const rawBuddy = loadJSON(STORAGE_BUDDY, null);
-    if (rawBuddy && typeof rawBuddy === "object") {
-      buddy = {
-        partnerName: String(rawBuddy.partnerName || ""),
-        partnerActiveDates: Array.isArray(rawBuddy.partnerActiveDates) ? rawBuddy.partnerActiveDates : [],
-        buddyLongest: Number(rawBuddy.buddyLongest) || 0,
-        lastPartnerYmd: rawBuddy.lastPartnerYmd || null,
-        lastMeYmd: rawBuddy.lastMeYmd || null,
-      };
     }
     const rawProfile = loadJSON(STORAGE_PROFILE, null);
     if (rawProfile && typeof rawProfile === "object") {
@@ -3182,7 +3576,7 @@ async function loadUserProfile() {
       profile.id = uid();
       saveProfile();
     }
-    syncPointsLedger();
+    await reconcilePointsLogWithSources();
   }
 
   function loadAppPrefs() {
@@ -3205,6 +3599,7 @@ async function loadUserProfile() {
     if (!["light", "dark", "system"].includes(appPrefs.themeMode)) appPrefs.themeMode = "light";
     const okAcc = ["default", "ocean", "rose", "mint", "amber"];
     if (!okAcc.includes(appPrefs.accent)) appPrefs.accent = "default";
+    appPrefs.activeGroupId = typeof appPrefs.activeGroupId === "string" ? appPrefs.activeGroupId : "";
     applyPrefsSideEffects();
   }
 
@@ -3272,13 +3667,12 @@ async function loadUserProfile() {
   }
 
   function saveGroupsState() {
-    localStorage.setItem(STORAGE_GROUPS, JSON.stringify(groups));
-    if (activeGroupId) localStorage.setItem(STORAGE_GROUP_MEMBERSHIP, activeGroupId);
-    else localStorage.removeItem(STORAGE_GROUP_MEMBERSHIP);
-  }
-
-  function saveBuddy() {
-    localStorage.setItem(STORAGE_BUDDY, JSON.stringify(buddy));
+    try {
+      appPrefs.activeGroupId = activeGroupId || "";
+      saveAppPrefs();
+    } catch (e) {
+      console.error("saveGroupsState:", e);
+    }
   }
 
   function saveProfile() {
@@ -3363,7 +3757,7 @@ async function loadUserProfile() {
     const lh = longestConsecutiveInSet(b);
     if (lh > buddy.buddyLongest) {
       buddy.buddyLongest = lh;
-      saveBuddy();
+      void persistBuddyStateToSupabase();
     }
   }
 
@@ -3541,7 +3935,7 @@ async function loadUserProfile() {
 
   function touchMeActivityYmd(ymd) {
     buddy.lastMeYmd = ymd;
-    saveBuddy();
+    void persistBuddyStateToSupabase();
   }
 
   function renderMotivation() {
@@ -3595,7 +3989,7 @@ async function loadUserProfile() {
     return u.toString();
   }
 
-  function renderGroups() {
+  async function renderGroups() {
     const g = activeGroupId ? groups.find((x) => x.id === activeGroupId) : null;
     if (!els.groupDetailEmpty || !els.groupDetailBody) return;
     if (!g) {
@@ -3609,7 +4003,7 @@ async function loadUserProfile() {
     if (els.groupDetailName) els.groupDetailName.textContent = g.name;
     if (els.groupDetailCode) els.groupDetailCode.textContent = g.code;
     if (els.groupInviteLink) els.groupInviteLink.value = getInviteUrl(g.code);
-    renderGroupRanking(g);
+    await renderGroupRanking(g);
     if (els.settingsModal && !els.settingsModal.hidden) renderSettingsGroupSection();
   }
 
@@ -3629,8 +4023,8 @@ async function loadUserProfile() {
       activeGroupId = g.id;
       saveGroupsState();
     }
-    refreshAchievements(true);
-    renderGroups();
+    await refreshAchievements(true);
+    await renderGroups();
     showToast(t("groups.joined"));
     void startSupabaseRealtime();
     return true;
@@ -3646,7 +4040,7 @@ async function loadUserProfile() {
     activeGroupId = null;
     groups = await loadGroupsFromSupabase();
     saveGroupsState();
-    renderGroups();
+    await renderGroups();
     showToast(t("settings.leftGroup"));
     void startSupabaseRealtime();
   }
@@ -3820,7 +4214,7 @@ async function loadUserProfile() {
   }
 
   /**
-   * Daily goal status from tasks due that day (persisted via flow_tasks in localStorage).
+   * Daily goal status from tasks due that day (tasks loaded from Supabase).
    * neutral: no tasks due, future day, or today with open tasks
    * success: all due tasks completed (today or past)
    * fail: past day with at least one incomplete task
@@ -3867,20 +4261,7 @@ async function loadUserProfile() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }
 
-  function getPointsLedger() {
-    const raw = loadJSON(STORAGE_POINTS_LEDGER, null);
-    if (!raw || typeof raw !== "object") return { months: {} };
-    if (!raw.months || typeof raw.months !== "object") raw.months = {};
-    return raw;
-  }
-
-  function savePointsLedger(ledger) {
-    try {
-      localStorage.setItem(STORAGE_POINTS_LEDGER, JSON.stringify(ledger));
-    } catch (_) {}
-  }
-
-  function collectMonthKeysForPointsSync() {
+  function collectMonthKeysForPoints() {
     const set = new Set();
     set.add(currentMonthKey());
     tasks.forEach((t) => {
@@ -3898,51 +4279,90 @@ async function loadUserProfile() {
   }
 
   /**
-   * Rebuilds per-month point buckets from tasks, timed events (streak done), and successful calendar days.
-   * Idempotent: overwrites month entries from current app state (no duplicate scoring).
+   * Writes derived task/event/goal points into Supabase `points_log` only (no local store).
+   * Idempotent via `ref_key`; refreshes `pointsLogCache` from the server.
    */
-  function syncPointsLedger() {
-    const ledger = getPointsLedger();
+  async function reconcilePointsLogWithSources() {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
     const todayStr = formatYMD(startOfDay(new Date()));
-    collectMonthKeysForPointsSync().forEach((monthKey) => {
+    /** @type {{ref_key:string,points:number,source:string,day:string}[]} */
+    const desired = [];
+    collectMonthKeysForPoints().forEach((monthKey) => {
       const parts = monthKey.split("-");
       const y = Number(parts[0]);
       const mo = Number(parts[1]);
       if (!y || !mo) return;
-      const monthData = { tasks: {}, events: {}, goals: {} };
       tasks.forEach((t) => {
         if (!t.completed || !t.dueDate) return;
         if (monthKeyFromYmd(t.dueDate) !== monthKey) return;
-        monthData.tasks[t.id] = true;
+        desired.push({
+          ref_key: `task:${t.id}`,
+          points: POINTS_PER_TASK_DONE,
+          source: "task",
+          day: String(t.dueDate).slice(0, 10),
+        });
       });
       events.forEach((e) => {
         if (e.allDay || !e.streakDone || !e.date) return;
         if (monthKeyFromYmd(e.date) !== monthKey) return;
-        monthData.events[e.id] = true;
+        desired.push({
+          ref_key: `event:${e.id}`,
+          points: POINTS_PER_EVENT_STREAK,
+          source: "event",
+          day: String(e.date).slice(0, 10),
+        });
       });
       const lastDay = new Date(y, mo, 0).getDate();
       for (let day = 1; day <= lastDay; day++) {
         const ymd = formatYMD(new Date(y, mo - 1, day));
         if (ymd > todayStr) continue;
         if (getDayGoalStatus(ymd, todayStr) === "success") {
-          monthData.goals[ymd] = true;
+          desired.push({
+            ref_key: `goal:${ymd}`,
+            points: POINTS_PER_GOAL_DAY,
+            source: "goal",
+            day: ymd,
+          });
         }
       }
-      ledger.months[monthKey] = monthData;
     });
-    savePointsLedger(ledger);
+    const wantKeys = new Set(desired.map((d) => d.ref_key));
+    try {
+      const { data: existing, error: e1 } = await supabase.from("points_log").select("ref_key").eq("user_id", userId);
+      if (e1) throw e1;
+      const have = new Set((existing || []).map((r) => r.ref_key));
+      const toInsert = desired
+        .filter((d) => !have.has(d.ref_key))
+        .map((d) => ({
+          user_id: userId,
+          points: d.points,
+          source: d.source,
+          day: d.day,
+          ref_key: d.ref_key,
+          created_at: new Date().toISOString(),
+        }));
+      if (toInsert.length) {
+        const { error: e2 } = await supabase.from("points_log").insert(toInsert);
+        if (e2) throw e2;
+      }
+      const stale = [...have].filter((k) => !wantKeys.has(k));
+      for (const ref_key of stale) {
+        await supabase.from("points_log").delete().eq("user_id", userId).eq("ref_key", ref_key);
+      }
+      await loadPointsLogFromSupabase();
+    } catch (e) {
+      console.error("reconcilePointsLogWithSources:", e);
+    }
   }
 
   function getMonthPointsTotal(monthKey) {
-    const m = getPointsLedger().months[monthKey];
-    if (!m) return 0;
-    const nt = Object.keys(m.tasks || {}).length;
-    const ne = Object.keys(m.events || {}).length;
-    const ng = Object.keys(m.goals || {}).length;
-    return nt * POINTS_PER_TASK_DONE + ne * POINTS_PER_EVENT_STREAK + ng * POINTS_PER_GOAL_DAY;
+    return pointsLogCache
+      .filter((r) => (r.day || "").slice(0, 7) === monthKey)
+      .reduce((sum, r) => sum + (Number(r.points) || 0), 0);
   }
 
-  /** Points for a member this month (only local profile has ledger data on this device). */
+  /** Points for a member this month (current user: sum from `pointsLogCache` / Supabase `points_log`). */
   function getMemberMonthPoints(memberId, monthKey) {
     if (memberId !== profile.id) return 0;
     return getMonthPointsTotal(monthKey);
@@ -3968,8 +4388,8 @@ async function loadUserProfile() {
     host.classList.add("avatar--initials");
   }
 
-  function renderGroupRanking(g) {
-    syncPointsLedger();
+  async function renderGroupRanking(g) {
+    await reconcilePointsLogWithSources();
     const monthKey = currentMonthKey();
     if (els.groupRankingMonth) {
       els.groupRankingMonth.textContent = new Date().toLocaleDateString(getLocaleTag(), {
@@ -4380,8 +4800,8 @@ async function loadUserProfile() {
     if (els.groupModalSuccessLink) els.groupModalSuccessLink.value = link;
     if (els.shareFallbackHint) els.shareFallbackHint.hidden = true;
     showToast(t("groups.created"));
-    refreshAchievements(true);
-    renderGroups();
+    await refreshAchievements(true);
+    await renderGroups();
     void startSupabaseRealtime();
   }
 
@@ -4585,7 +5005,7 @@ async function loadUserProfile() {
       btn.querySelector(".selfcare-entry-date").textContent = longDateLabel(ymd);
       btn.querySelector(".selfcare-entry-snippet").textContent = selfcarePreviewSnippet(entry);
       btn.addEventListener("click", () => {
-        if (selfcareDirty) saveSelfcareEntry(false);
+        if (selfcareDirty) void saveSelfcareEntry(false);
         renderSelfcarePreview(ymd);
         renderSelfcareEntriesList();
       });
@@ -4594,22 +5014,28 @@ async function loadUserProfile() {
     });
   }
 
-  function saveSelfcareEntry(showToastMsg) {
+  async function saveSelfcareEntry(showToastMsg) {
     const ymd = getSelfcareSelectedDate();
     const payload = sanitizeSelfcareEntry(getSelfcareFormEntry());
     if (!selfcareEntryHasContent(payload)) {
+      delete selfcareJournal[ymd];
+      await deleteSelfcareEntryFromSupabase(ymd);
       setSelfcareStatus(t("selfcare.statusIdle"));
       clearSelfcareForm();
+      selfcareDirty = false;
+      renderSelfcarePreview(selfcareActivePreviewYmd);
+      renderSelfcareEntriesList();
+      void refreshAchievements(Boolean(showToastMsg));
       return;
     }
     selfcareJournal[ymd] = payload;
-    saveSelfcareJournal();
+    await upsertSelfcareEntryToSupabase(ymd, payload);
     selfcareDirty = false;
     renderSelfcarePreview(ymd);
     renderSelfcareEntriesList();
     clearSelfcareForm();
     if (els.selfcareDate) els.selfcareDate.value = ymd;
-    refreshAchievements(Boolean(showToastMsg));
+    void refreshAchievements(Boolean(showToastMsg));
     setSelfcareStatus(t("selfcare.statusSaved"));
     if (showToastMsg) showToast(t("selfcare.statusSaved"), { type: "accent" });
   }
@@ -4800,7 +5226,7 @@ async function loadUserProfile() {
     }
   }
 
-  function finishFocusSession(completed) {
+  async function finishFocusSession(completed) {
     stopFocusTick();
     document.body.classList.remove("focus-session-active");
     if (!focusTimer.activeSessionId) {
@@ -4824,7 +5250,7 @@ async function loadUserProfile() {
     };
     focusHistory.unshift(session);
     focusHistory = focusHistory.slice(0, 120);
-    saveFocusHistory();
+    await insertFocusSessionToSupabase(session);
     if (completed) notifyFocusCompleted(session);
     focusTimer.running = false;
     focusTimer.paused = false;
@@ -4833,7 +5259,7 @@ async function loadUserProfile() {
     focusTimer.remainingSec = focusTimer.durationSec;
     updateFocusTimerUi();
     renderFocusHistory();
-    refreshAchievements(Boolean(completed));
+    await refreshAchievements(Boolean(completed));
     refreshFocusGuidance();
     if (completed) startBreak(true);
   }
@@ -4869,7 +5295,7 @@ async function loadUserProfile() {
         showToast(t("focus.almostDone"), { type: "accent" });
       }
       updateFocusTimerUi();
-      if (left <= 0) finishFocusSession(true);
+      if (left <= 0) void finishFocusSession(true);
     }, 1000);
   }
 
@@ -4888,7 +5314,7 @@ async function loadUserProfile() {
   }
 
   function endFocusSessionEarly() {
-    finishFocusSession(false);
+    void finishFocusSession(false);
   }
 
   async function toggleFocusFullscreen() {
@@ -4914,11 +5340,21 @@ async function loadUserProfile() {
   }
 
   function countSuccessfulGoalDays() {
-    syncPointsLedger();
-    const ledger = getPointsLedger();
-    return Object.values(ledger.months || {}).reduce((sum, monthData) => {
-      return sum + Object.keys((monthData && monthData.goals) || {}).length;
-    }, 0);
+    const todayStr = formatYMD(startOfDay(new Date()));
+    const unique = new Set();
+    collectMonthKeysForPoints().forEach((monthKey) => {
+      const parts = monthKey.split("-");
+      const y = Number(parts[0]);
+      const mo = Number(parts[1]);
+      if (!y || !mo) return;
+      const lastDay = new Date(y, mo, 0).getDate();
+      for (let day = 1; day <= lastDay; day++) {
+        const ymd = formatYMD(new Date(y, mo - 1, day));
+        if (ymd > todayStr) continue;
+        if (getDayGoalStatus(ymd, todayStr) === "success") unique.add(ymd);
+      }
+    });
+    return unique.size;
   }
 
   function isRankOneInAnyGroup() {
@@ -4991,10 +5427,11 @@ async function loadUserProfile() {
     }
   }
 
-  function evaluateAchievements(opts) {
+  async function evaluateAchievements(opts) {
     const notify = Boolean(opts && opts.notify);
     const metrics = getAchievementMetrics();
     let changed = false;
+    const pendingUnlocks = /** @type {Promise<boolean>[]} */ ([]);
     ACHIEVEMENT_DEFS.forEach((def) => {
       if (achievementsState.unlocked[def.id]) return;
       const done = getAchievementProgress(def, metrics);
@@ -5003,17 +5440,21 @@ async function loadUserProfile() {
       achievementsState.unlocked[def.id] = unlockedAt;
       changed = true;
       metrics.unlockedCount += 1;
+      pendingUnlocks.push(unlockAchievementToSupabase(def.id, unlockedAt));
       if (notify) {
         const title = t(`ach.name.${def.id}`);
         showToast(`🏆 ${t("ach.toastUnlocked").replace("{name}", title)}`, { type: "accent" });
       }
     });
-    if (changed) saveAchievementsState();
+    if (pendingUnlocks.length) {
+      await Promise.all(pendingUnlocks);
+      await loadAchievementsFromSupabase();
+    }
     return changed;
   }
 
-  function refreshAchievements(notify) {
-    const changed = evaluateAchievements({ notify: Boolean(notify) });
+  async function refreshAchievements(notify) {
+    const changed = await evaluateAchievements({ notify: Boolean(notify) });
     if (currentView === "achievements" || changed) renderAchievements();
   }
 
@@ -5129,7 +5570,7 @@ async function loadUserProfile() {
     if (view === "selfcare") renderSelfcare();
     if (view === "focus") renderFocus();
     if (view === "achievements") renderAchievements();
-    if (view === "groups") renderGroups();
+    if (view === "groups") void renderGroups();
     refreshCoachBanner();
   }
 
@@ -5314,20 +5755,19 @@ async function loadUserProfile() {
         } else {
           delete task.completedAt;
         }
-        const ok = await updateTaskToSupabase(task);
-        if (!ok) {
+        const updated = await updateTaskToSupabase(task);
+        if (!updated) {
           task.completed = prev.completed;
           if (prev.completedAt) task.completedAt = prev.completedAt;
           else delete task.completedAt;
           return;
         }
         const touchYmd = task.completed && task.completedAt ? task.completedAt : null;
-        tasks = await loadTasksFromSupabase();
-        syncPointsLedger();
+        suppressTasksRealtimeReload(750);
+        await reloadTasksAndRender();
         if (touchYmd) touchMeActivityYmd(touchYmd);
         maybeUpdateBuddyRecord();
-        refreshAchievements(true);
-        refreshUiAfterTasksChange();
+        await refreshAchievements(true);
       });
 
       li.querySelector(".edit-task").addEventListener("click", () => openTaskModal(task.id));
@@ -5336,10 +5776,9 @@ async function loadUserProfile() {
         if (confirm(t("confirm.deleteTask"))) {
           const ok = await deleteTaskFromSupabase(task.id);
           if (!ok) return;
-          tasks = await loadTasksFromSupabase();
-          syncPointsLedger();
+          suppressTasksRealtimeReload(750);
+          await reloadTasksAndRender();
           maybeUpdateBuddyRecord();
-          refreshUiAfterTasksChange();
         }
       });
 
@@ -5608,6 +6047,10 @@ async function loadUserProfile() {
 
   // ——— Modals ———
 
+  function suppressTasksRealtimeReload(ms = 600) {
+    suppressTasksRealtimeReloadUntil = Date.now() + ms;
+  }
+
   function populateShareScopeSelect(selectEl, selectedGroupId) {
     if (!selectEl) return;
     const want = selectedGroupId && groups.some((g) => g.id === selectedGroupId) ? selectedGroupId : "";
@@ -5665,8 +6108,19 @@ async function loadUserProfile() {
     setTimeout(() => els.taskTitle.focus(), 50);
   }
 
+  function resetTaskModalForm() {
+    if (!els.taskForm) return;
+    els.taskForm.reset();
+    if (els.taskId) els.taskId.value = "";
+    if (els.taskDelete) els.taskDelete.hidden = true;
+    try {
+      delete els.taskForm.dataset.taskMode;
+    } catch (_) {}
+  }
+
   function closeTaskModal() {
     hideModal(els.taskModal, els.taskModalBackdrop);
+    resetTaskModalForm();
   }
 
   const EVENT_TIME_MIN_STEP = 5;
@@ -5855,11 +6309,13 @@ async function loadUserProfile() {
   }
 
   async function handleTaskSubmit(e) {
+    console.log("TASK SUBMIT TRIGGERED");
     e.preventDefault();
     if (taskSubmitBusy) return;
     taskSubmitBusy = true;
     try {
       const isEditMode = Boolean(String(els.taskId.value || "").trim());
+      console.log("Task submit triggered", { mode: isEditMode ? "edit" : "create" });
       const id = isEditMode ? String(els.taskId.value).trim() : crypto.randomUUID();
       const existing = isEditMode ? tasks.find((x) => x.id === id) : null;
       const completed = els.taskCompleted.checked;
@@ -5880,18 +6336,32 @@ async function loadUserProfile() {
       } else {
         delete payload.completedAt;
       }
-      if (!payload.title) return;
+      if (!payload.title) {
+        showToast(t("taskModal.titleRequired"));
+        els.taskTitle?.focus();
+        return;
+      }
 
-      const ok = isEditMode ? await updateTaskToSupabase(payload) : await insertTaskToSupabase(payload);
-      if (!ok) return;
+      console.log("Task object before save:", payload);
+      const saved = isEditMode ? await updateTaskToSupabase(payload) : await insertTaskToSupabase(payload);
+      if (!saved) {
+        showToast(t("taskModal.saveFailed"));
+        return;
+      }
+      console.log("Task saved (mapped):", saved);
       if (completed && payload.completedAt) touchMeActivityYmd(payload.completedAt);
 
-      tasks = await loadTasksFromSupabase();
-      syncPointsLedger();
+      suppressTasksRealtimeReload(750);
+      await reloadTasksAndRender();
       maybeUpdateBuddyRecord();
-      refreshAchievements(true);
+      await refreshAchievements(true);
       closeTaskModal();
-      refreshUiAfterTasksChange();
+    } catch (err) {
+      console.error("handleTaskSubmit: caught exception:", err);
+      const line = err instanceof Error ? err.message : String(err);
+      console.error("handleTaskSubmit: message for UI:", line);
+      const maxLen = 380;
+      showToast(line.length > maxLen ? line.slice(0, maxLen - 1) + "…" : line);
     } finally {
       taskSubmitBusy = false;
     }
@@ -5941,8 +6411,8 @@ async function loadUserProfile() {
       }
 
       events = await loadEventsFromSupabase();
-      syncPointsLedger();
-      refreshAchievements(true);
+      await reconcilePointsLogWithSources();
+      await refreshAchievements(true);
       closeEventModal();
       selectedDateStr = payload.date;
       refreshUiAfterEventsChange();
@@ -5994,8 +6464,20 @@ async function loadUserProfile() {
   let eventSubmitBusy = false;
   let tasksRealtimeChannel = null;
   let eventsRealtimeChannel = null;
+  let selfcareRealtimeChannel = null;
+  let focusRealtimeChannel = null;
+  let achievementsRealtimeChannel = null;
+  let buddyRealtimeChannel = null;
+  let pointsRealtimeChannel = null;
   let refreshTasksRealtimeTimer = 0;
   let refreshEventsRealtimeTimer = 0;
+  let refreshSelfcareRealtimeTimer = 0;
+  let refreshFocusRealtimeTimer = 0;
+  let refreshAchievementsRealtimeTimer = 0;
+  let refreshBuddyRealtimeTimer = 0;
+  let refreshPointsRealtimeTimer = 0;
+  /** Skip task realtime reload briefly after local mutations to avoid racing with our own refetch. */
+  let suppressTasksRealtimeReloadUntil = 0;
 
   function loadAuthUsers() {
     authUsers = loadJSON(STORAGE_USERS, []);
@@ -6098,6 +6580,11 @@ async function loadUserProfile() {
     saveProfile();
     hideAuthScreen();
     applyDomI18n();
+    try {
+      await loadState();
+    } catch (e) {
+      console.error("loginUserSuccess loadState:", e);
+    }
     if (!mainAppInitialized) {
       mainAppInitialized = true;
       await runMainAppInit();
@@ -6146,24 +6633,29 @@ async function loadUserProfile() {
 
   async function handleAuthLoginSubmit(e) {
     e.preventDefault();
-  
+
     const email = document.getElementById("authLoginEmail").value;
     const password = document.getElementById("authLoginPassword").value;
-  
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-  
+
     if (error) {
-      alert("Login fehlgeschlagen: " + error.message);
+      setAuthError(els.authLoginError, error.message);
       return;
     }
-  
-    console.log("Eingeloggt:", data);
-  
-    document.getElementById("authGate").hidden = true;
-    document.getElementById("app").hidden = false;
+
+    const u = data?.user;
+    if (!u) {
+      setAuthError(els.authLoginError, "Kein Benutzer in der Antwort.");
+      return;
+    }
+
+    const meta = u.user_metadata || {};
+    const name = meta.full_name || meta.name || String(u.email || email || "").split("@")[0] || "You";
+    await loginUserSuccess({ id: u.id, email: u.email || email, name }, "email");
   }
 
   async function handleAuthRegisterSubmit(e) {
@@ -6368,9 +6860,7 @@ async function loadUserProfile() {
   async function init() {
     calAnchor = startOfDay(new Date());
     selectedDateStr = formatYMD(new Date());
-    await loadState();
     loadAppPrefs();
-    
     initLanguage();
     initAuthAndCookieListeners();
 
@@ -6383,6 +6873,11 @@ async function loadUserProfile() {
     }
 
     if (!session) {
+      try {
+        await loadState();
+      } catch (e) {
+        console.error("init loadState (guest):", e);
+      }
       showAuthScreen();
       applyDomI18n();
       return;
@@ -6393,6 +6888,11 @@ async function loadUserProfile() {
 
     hideAuthScreen();
     authSession = readSessionRaw();
+    try {
+      await loadState();
+    } catch (e) {
+      console.error("init loadState (authenticated):", e);
+    }
     await runMainAppInit();
     maybeShowCookieBar();
     setTimeout(() => maybeShowWelcomeModal(), 300);
@@ -6408,6 +6908,26 @@ async function loadUserProfile() {
         await supabase.removeChannel(eventsRealtimeChannel);
         eventsRealtimeChannel = null;
       }
+      if (selfcareRealtimeChannel) {
+        await supabase.removeChannel(selfcareRealtimeChannel);
+        selfcareRealtimeChannel = null;
+      }
+      if (focusRealtimeChannel) {
+        await supabase.removeChannel(focusRealtimeChannel);
+        focusRealtimeChannel = null;
+      }
+      if (achievementsRealtimeChannel) {
+        await supabase.removeChannel(achievementsRealtimeChannel);
+        achievementsRealtimeChannel = null;
+      }
+      if (buddyRealtimeChannel) {
+        await supabase.removeChannel(buddyRealtimeChannel);
+        buddyRealtimeChannel = null;
+      }
+      if (pointsRealtimeChannel) {
+        await supabase.removeChannel(pointsRealtimeChannel);
+        pointsRealtimeChannel = null;
+      }
     } catch (err) {
       console.error("Supabase realtime stop:", err);
     }
@@ -6419,20 +6939,34 @@ async function loadUserProfile() {
       clearTimeout(refreshEventsRealtimeTimer);
       refreshEventsRealtimeTimer = 0;
     }
+    if (refreshSelfcareRealtimeTimer) {
+      clearTimeout(refreshSelfcareRealtimeTimer);
+      refreshSelfcareRealtimeTimer = 0;
+    }
+    if (refreshFocusRealtimeTimer) {
+      clearTimeout(refreshFocusRealtimeTimer);
+      refreshFocusRealtimeTimer = 0;
+    }
+    if (refreshAchievementsRealtimeTimer) {
+      clearTimeout(refreshAchievementsRealtimeTimer);
+      refreshAchievementsRealtimeTimer = 0;
+    }
+    if (refreshBuddyRealtimeTimer) {
+      clearTimeout(refreshBuddyRealtimeTimer);
+      refreshBuddyRealtimeTimer = 0;
+    }
+    if (refreshPointsRealtimeTimer) {
+      clearTimeout(refreshPointsRealtimeTimer);
+      refreshPointsRealtimeTimer = 0;
+    }
   }
 
   async function reloadTasksAfterRemoteChange() {
+    if (Date.now() < suppressTasksRealtimeReloadUntil) {
+      return;
+    }
     try {
-      tasks = await loadTasksFromSupabase();
-      syncPointsLedger();
-      renderTasks();
-      renderDashboard();
-      renderMotivation();
-      if (currentView === "calendar") {
-        renderCalendar();
-        renderDayDetail();
-      }
-      refreshCoachBanner();
+      await reloadTasksAndRender();
     } catch (err) {
       console.error("Task reload after realtime:", err);
     }
@@ -6441,7 +6975,7 @@ async function loadUserProfile() {
   async function reloadEventsAfterRemoteChange() {
     try {
       events = await loadEventsFromSupabase();
-      syncPointsLedger();
+      await reconcilePointsLogWithSources();
       refreshUiAfterEventsChange();
     } catch (err) {
       console.error("Event reload after realtime:", err);
@@ -6461,6 +6995,96 @@ async function loadUserProfile() {
     refreshEventsRealtimeTimer = window.setTimeout(() => {
       refreshEventsRealtimeTimer = 0;
       void reloadEventsAfterRemoteChange();
+    }, 200);
+  }
+
+  async function reloadSelfcareAfterRemoteChange() {
+    try {
+      await loadSelfcareEntriesFromSupabase();
+      renderSelfcare();
+    } catch (err) {
+      console.error("Self-care reload after realtime:", err);
+    }
+  }
+
+  async function reloadFocusAfterRemoteChange() {
+    try {
+      await loadFocusSessionsFromSupabase();
+      renderFocus();
+    } catch (err) {
+      console.error("Focus reload after realtime:", err);
+    }
+  }
+
+  async function reloadAchievementsAfterRemoteChange() {
+    try {
+      await loadAchievementsFromSupabase();
+      renderAchievements();
+    } catch (err) {
+      console.error("Achievements reload after realtime:", err);
+    }
+  }
+
+  async function reloadBuddyAfterRemoteChange() {
+    try {
+      await loadBuddyStateFromSupabase();
+      syncBuddyPartnerCheckbox();
+      renderMotivation();
+      refreshCoachBanner();
+    } catch (err) {
+      console.error("Buddy reload after realtime:", err);
+    }
+  }
+
+  async function reloadPointsAfterRemoteChange() {
+    try {
+      await loadPointsLogFromSupabase();
+      renderMotivation();
+      if (currentView === "achievements") renderAchievements();
+      if (currentView === "groups") void renderGroups();
+      refreshCoachBanner();
+    } catch (err) {
+      console.error("Points reload after realtime:", err);
+    }
+  }
+
+  function scheduleSelfcareRealtimeReload() {
+    if (refreshSelfcareRealtimeTimer) clearTimeout(refreshSelfcareRealtimeTimer);
+    refreshSelfcareRealtimeTimer = window.setTimeout(() => {
+      refreshSelfcareRealtimeTimer = 0;
+      void reloadSelfcareAfterRemoteChange();
+    }, 200);
+  }
+
+  function scheduleFocusRealtimeReload() {
+    if (refreshFocusRealtimeTimer) clearTimeout(refreshFocusRealtimeTimer);
+    refreshFocusRealtimeTimer = window.setTimeout(() => {
+      refreshFocusRealtimeTimer = 0;
+      void reloadFocusAfterRemoteChange();
+    }, 200);
+  }
+
+  function scheduleAchievementsRealtimeReload() {
+    if (refreshAchievementsRealtimeTimer) clearTimeout(refreshAchievementsRealtimeTimer);
+    refreshAchievementsRealtimeTimer = window.setTimeout(() => {
+      refreshAchievementsRealtimeTimer = 0;
+      void reloadAchievementsAfterRemoteChange();
+    }, 200);
+  }
+
+  function scheduleBuddyRealtimeReload() {
+    if (refreshBuddyRealtimeTimer) clearTimeout(refreshBuddyRealtimeTimer);
+    refreshBuddyRealtimeTimer = window.setTimeout(() => {
+      refreshBuddyRealtimeTimer = 0;
+      void reloadBuddyAfterRemoteChange();
+    }, 200);
+  }
+
+  function schedulePointsRealtimeReload() {
+    if (refreshPointsRealtimeTimer) clearTimeout(refreshPointsRealtimeTimer);
+    refreshPointsRealtimeTimer = window.setTimeout(() => {
+      refreshPointsRealtimeTimer = 0;
+      void reloadPointsAfterRemoteChange();
     }, 200);
   }
 
@@ -6508,6 +7132,71 @@ async function loadUserProfile() {
           console.error("Events realtime:", status, err?.message || err);
         }
       });
+
+      selfcareRealtimeChannel = supabase
+        .channel(`flow-selfcare-${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "selfcare_entries", filter: `user_id=eq.${userId}` },
+          () => scheduleSelfcareRealtimeReload()
+        )
+        .subscribe((status, err) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.error("Self-care realtime:", status, err?.message || err);
+          }
+        });
+
+      focusRealtimeChannel = supabase
+        .channel(`flow-focus-${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "focus_sessions", filter: `user_id=eq.${userId}` },
+          () => scheduleFocusRealtimeReload()
+        )
+        .subscribe((status, err) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.error("Focus realtime:", status, err?.message || err);
+          }
+        });
+
+      achievementsRealtimeChannel = supabase
+        .channel(`flow-achievements-${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "achievements", filter: `user_id=eq.${userId}` },
+          () => scheduleAchievementsRealtimeReload()
+        )
+        .subscribe((status, err) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.error("Achievements realtime:", status, err?.message || err);
+          }
+        });
+
+      buddyRealtimeChannel = supabase
+        .channel(`flow-buddy-${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "buddy_state", filter: `user_id=eq.${userId}` },
+          () => scheduleBuddyRealtimeReload()
+        )
+        .subscribe((status, err) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.error("Buddy realtime:", status, err?.message || err);
+          }
+        });
+
+      pointsRealtimeChannel = supabase
+        .channel(`flow-points-${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "points_log", filter: `user_id=eq.${userId}` },
+          () => schedulePointsRealtimeReload()
+        )
+        .subscribe((status, err) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.error("Points realtime:", status, err?.message || err);
+          }
+        });
     } catch (err) {
       console.error("Supabase realtime start:", err);
     }
@@ -6556,13 +7245,13 @@ async function loadUserProfile() {
     $('[data-action="go-motivation"]')?.addEventListener("click", () => setView("motivation"));
     $('[data-action="add-task-empty"]')?.addEventListener("click", () => openTaskModal(null));
 
-    els.btnSaveSelfcare?.addEventListener("click", () => saveSelfcareEntry(true));
+    els.btnSaveSelfcare?.addEventListener("click", () => void saveSelfcareEntry(true));
     els.btnSelfcareClear?.addEventListener("click", () => {
       clearSelfcareForm();
       setSelfcareStatus(t("selfcare.statusIdle"));
     });
     els.btnSelfcareLoadDate?.addEventListener("click", () => {
-      if (selfcareDirty) saveSelfcareEntry(false);
+      if (selfcareDirty) void saveSelfcareEntry(false);
       const ymd = getSelfcareSelectedDate();
       loadSelfcareDateIntoForm(ymd);
       renderSelfcarePreview(ymd);
@@ -6687,14 +7376,14 @@ async function loadUserProfile() {
         if (m) m.name = profile.displayName;
       });
       saveGroupsState();
-      if (currentView === "groups") renderGroups();
+      if (currentView === "groups") void renderGroups();
     });
 
     els.btnRequestNotifications?.addEventListener("click", () => requestNotificationPermission());
 
     els.buddyNameInput?.addEventListener("change", () => {
       buddy.partnerName = (els.buddyNameInput.value || "").trim();
-      saveBuddy();
+      void persistBuddyStateToSupabase();
       renderMotivation();
     });
 
@@ -6707,7 +7396,7 @@ async function loadUserProfile() {
       } else {
         buddy.partnerActiveDates = buddy.partnerActiveDates.filter((d) => d !== today);
       }
-      saveBuddy();
+      void persistBuddyStateToSupabase();
       maybeUpdateBuddyRecord();
       renderMotivation();
       if (currentView === "dashboard") renderDashboard();
@@ -6776,7 +7465,11 @@ async function loadUserProfile() {
 
     if (!taskModalBindingsInitialized) {
       taskModalBindingsInitialized = true;
-      els.taskForm.addEventListener("submit", handleTaskSubmit);
+      if (!els.taskForm) {
+        console.error("Flow: #taskForm not found — task modal submit cannot bind.");
+      } else {
+        els.taskForm.addEventListener("submit", handleTaskSubmit);
+      }
       els.taskCancel.addEventListener("click", closeTaskModal);
       els.taskModalClose.addEventListener("click", closeTaskModal);
       els.taskModalBackdrop.addEventListener("click", closeTaskModal);
@@ -6786,12 +7479,11 @@ async function loadUserProfile() {
         if (confirm(t("confirm.deleteTask"))) {
           const ok = await deleteTaskFromSupabase(id);
           if (!ok) return;
-          tasks = await loadTasksFromSupabase();
-          syncPointsLedger();
+          suppressTasksRealtimeReload(750);
+          await reloadTasksAndRender();
           maybeUpdateBuddyRecord();
-          refreshAchievements(false);
+          await refreshAchievements(false);
           closeTaskModal();
-          refreshUiAfterTasksChange();
         }
       });
     }
@@ -6811,9 +7503,9 @@ async function loadUserProfile() {
           const ok = await deleteEventFromSupabase(id);
           if (!ok) return;
           events = await loadEventsFromSupabase();
-          syncPointsLedger();
+          await reconcilePointsLogWithSources();
           maybeUpdateBuddyRecord();
-          refreshAchievements(false);
+          await refreshAchievements(false);
           closeEventModal();
           refreshUiAfterEventsChange();
         }
@@ -6832,7 +7524,7 @@ async function loadUserProfile() {
       }
     });
 
-    refreshAchievements(false);
+    void refreshAchievements(false);
     const openedJoinLink = await parseJoinFromQuery();
     if (!openedJoinLink) setView(appPrefs.defaultView || "dashboard");
     renderTasks();

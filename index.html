@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="Flow" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" sizes="180x180" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <title>Flow — Tasks & Calendar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -19,6 +19,17 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="appSplash" class="app-splash" role="img" aria-label="Flow">
+    <div class="app-splash-inner">
+      <img class="app-splash-logo" src="/icons/icon-192.png" alt="" width="96" height="96" decoding="async" />
+      <span class="app-splash-title">Flow</span>
+      <div class="app-splash-loader" aria-hidden="true">
+        <span class="app-splash-dot"></span>
+        <span class="app-splash-dot"></span>
+        <span class="app-splash-dot"></span>
+      </div>
+    </div>
+  </div>
   <!-- Auth gate (shown until session exists) -->
   <div class="auth-gate" id="authGate" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <div class="auth-gate-inner">
@@ -1370,6 +1381,29 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="script.js"></script>
+  <script>
+    (function () {
+      var el = document.getElementById("appSplash");
+      if (!el) return;
+      var hidden = false;
+      function hideSplash() {
+        if (hidden) return;
+        hidden = true;
+        el.classList.add("app-splash--hide");
+        var removeEl = function () {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        };
+        el.addEventListener("transitionend", removeEl, { once: true });
+        setTimeout(removeEl, 480);
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", hideSplash, { once: true });
+      } else {
+        requestAnimationFrame(hideSplash);
+      }
+      setTimeout(hideSplash, 1000);
+    })();
+  </script>
+  <script src="script.js"></script>
 </body>
 </html>

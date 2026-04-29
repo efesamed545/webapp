@@ -4487,3 +4487,102 @@ body.focus-session-active .coach-banner {
     border-radius: 50%;
     display: block;
   }
+
+  /* ——— PWA in-app launch splash (homescreen open) ——— */
+  .app-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    box-sizing: border-box;
+    background: linear-gradient(165deg, #fffbf7 0%, #fcf5f0 42%, #ffe9dc 100%);
+    transition:
+      opacity 0.4s ease,
+      visibility 0.4s ease;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app-splash--hide {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .app-splash-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.1rem;
+    text-align: center;
+    max-width: 90vw;
+  }
+
+  .app-splash-logo {
+    width: 5.5rem;
+    height: 5.5rem;
+    border-radius: 1.25rem;
+    box-shadow:
+      0 4px 24px rgba(230, 126, 34, 0.18),
+      0 1px 0 rgba(255, 255, 255, 0.8) inset;
+    object-fit: cover;
+  }
+
+  .app-splash-title {
+    font-family: var(--font-heading, "Plus Jakarta Sans", system-ui, sans-serif);
+    font-weight: 700;
+    font-size: clamp(1.65rem, 5vw, 2rem);
+    letter-spacing: -0.03em;
+    color: #c45d12;
+  }
+
+  .app-splash-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 0.5rem;
+  }
+
+  .app-splash-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: #e67e22;
+    opacity: 0.35;
+    animation: app-splash-pulse 0.9s ease-in-out infinite;
+  }
+
+  .app-splash-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .app-splash-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes app-splash-pulse {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.85);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app-splash {
+      transition: opacity 0.2s ease;
+    }
+    .app-splash-dot {
+      animation: none;
+      opacity: 0.7;
+    }
+  }

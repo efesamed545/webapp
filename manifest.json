@@ -1,12 +1,12 @@
 {
-  "name": "Flow — Tasks & Calendar",
+  "name": "Flow",
   "short_name": "Flow",
   "description": "Tasks, calendar, focus, and group sharing — syncs with Supabase when online.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#fafafa",
+  "background_color": "#fcf5f0",
   "theme_color": "#e67e22",
   "icons": [
     {

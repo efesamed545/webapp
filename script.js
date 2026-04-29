@@ -3132,7 +3132,11 @@ async function loadUserProfile() {
     const userId = await getCurrentUserId();
     if (!userId) return;
     try {
-      const { data, error } = await supabase.from("selfcare_entries").select("day,body").eq("user_id", userId);
+      const { data, error } = await supabase
+        .from("selfcare_entries")
+        .select("day,body,updated_at")
+        .eq("user_id", userId)
+        .order("day", { ascending: false });
       if (error) throw error;
       (data || []).forEach((row) => {
         const ymd = typeof row.day === "string" ? row.day : String(row.day || "").slice(0, 10);
@@ -3145,23 +3149,31 @@ async function loadUserProfile() {
         }
       });
     } catch (e) {
-      console.error("loadSelfcareEntriesFromSupabase:", e);
+      logSupabasePostgrestError("loadSelfcareEntriesFromSupabase", e);
+      console.error(e);
     }
   }
 
   async function upsertSelfcareEntryToSupabase(ymd, payload) {
     const userId = await getCurrentUserId();
     if (!userId) return false;
-    const body = JSON.stringify(payload);
+    const bodyStr = JSON.stringify(payload);
+    const row = {
+      user_id: userId,
+      day: ymd,
+      body: bodyStr,
+      updated_at: new Date().toISOString(),
+    };
     try {
-      const { error } = await supabase.from("selfcare_entries").upsert(
-        { user_id: userId, day: ymd, body, updated_at: new Date().toISOString() },
-        { onConflict: "user_id,day" }
-      );
+      const { error } = await supabase
+        .from("selfcare_entries")
+        .upsert(row, { onConflict: "user_id,day" })
+        .select("day");
       if (error) throw error;
       return true;
     } catch (e) {
-      console.error("upsertSelfcareEntryToSupabase:", e);
+      logSupabasePostgrestError("upsertSelfcareEntryToSupabase", e);
+      console.error(e);
       return false;
     }
   }
@@ -3174,7 +3186,8 @@ async function loadUserProfile() {
       if (error) throw error;
       return true;
     } catch (e) {
-      console.error("deleteSelfcareEntryFromSupabase:", e);
+      logSupabasePostgrestError("deleteSelfcareEntryFromSupabase", e);
+      console.error(e);
       return false;
     }
   }
@@ -3510,55 +3523,100 @@ async function loadUserProfile() {
   }
 
   async function loadGroupsFromSupabase() {
-    const userId = await getCurrentUserId();
-    if (!userId) return [];
+    console.log("[groups] loadGroupsFromSupabase start");
+    let userId = await getCurrentUserId();
+    if (!userId) {
+      try {
+        const s = readSessionRaw();
+        if (s?.userId) userId = s.userId;
+      } catch (_) {}
+    }
+    if (!userId) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        userId = data?.session?.user?.id || null;
+      } catch (_) {}
+    }
+    if (!userId) {
+      try {
+        const { data } = await supabase.auth.getUser();
+        userId = data?.user?.id || null;
+      } catch (_) {}
+    }
+    console.log("[groups] currentUserId:", userId);
+    if (!userId) {
+      console.log("[groups] group_members:", []);
+      console.log("[groups] groupIds:", []);
+      console.log("[groups] loaded groups:", []);
+      return [];
+    }
     try {
-    const { data: myRows, error: e1 } = await supabase.from("group_members").select("group_id").eq("user_id", userId);
-    if (e1) {
-      console.error("Load groups (membership):", e1.message);
-      return [];
-    }
-    const gids = [...new Set((myRows || []).map((r) => r.group_id).filter(Boolean))];
-    if (!gids.length) {
-      return [];
-    }
-    const { data: grps, error: e2 } = await supabase.from("groups").select("*").in("id", gids);
-    if (e2 || !grps) {
-      console.error("Load groups:", e2?.message);
-      return [];
-    }
-    let allMem = [];
-    const { data: memRows, error: e3 } = await supabase
-      .from("group_members")
-      .select("user_id, group_id, profiles(full_name, email)")
-      .in("group_id", gids);
-    if (!e3 && memRows) {
-      allMem = memRows;
-    } else {
-      if (e3) console.warn("group_members+profiles join failed, using ids only:", e3.message);
-      const { data: fallback } = await supabase.from("group_members").select("user_id, group_id").in("group_id", gids);
-      allMem = (fallback || []).map((r) => ({ ...r, profiles: null }));
-    }
+      const { data: myRows, error: e1 } = await supabase.from("group_members").select("group_id").eq("user_id", userId);
+      const memberships = myRows || [];
+      console.log("[groups] group_members:", memberships);
+      if (e1) {
+        logSupabasePostgrestError("loadGroupsFromSupabase membership", e1);
+        console.error(e1);
+        console.log("[groups] groupIds:", []);
+        console.log("[groups] loaded groups:", []);
+        return [];
+      }
+      const groupIds = [...new Set(memberships.map((r) => r.group_id).filter(Boolean))];
+      console.log("[groups] groupIds:", groupIds);
+      if (!groupIds.length) {
+        console.log("[groups] loaded groups:", []);
+        return [];
+      }
+      const { data: grps, error: e2 } = await supabase.from("groups").select("*").in("id", groupIds);
+      if (e2) {
+        logSupabasePostgrestError("loadGroupsFromSupabase groups", e2);
+        console.error(e2);
+        console.log("[groups] loaded groups:", []);
+        return [];
+      }
+      if (!grps) {
+        console.log("[groups] loaded groups:", []);
+        return [];
+      }
+      let allMem = [];
+      const { data: memRows, error: e3 } = await supabase
+        .from("group_members")
+        .select("user_id, group_id, profiles(full_name, email)")
+        .in("group_id", groupIds);
+      if (!e3 && memRows) {
+        allMem = memRows;
+      } else {
+        if (e3) {
+          logSupabasePostgrestError("loadGroupsFromSupabase members join", e3);
+          console.warn("group_members+profiles join failed, using ids only:", e3.message);
+        }
+        const { data: fallback } = await supabase.from("group_members").select("user_id, group_id").in("group_id", groupIds);
+        allMem = (fallback || []).map((r) => ({ ...r, profiles: null }));
+      }
 
-    return grps.map((row) => ({
-      id: row.id,
-      name: row.name,
-      code: row.invite_code,
-      owner_id: row.owner_id,
-      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-      members: allMem
-        .filter((m) => m.group_id === row.id)
-        .map((m) => {
-          const p = m.profiles;
-          const pr = Array.isArray(p) ? p[0] : p;
-          return {
-            id: m.user_id,
-            name: (pr && (pr.full_name || pr.email)) || String(m.user_id).slice(0, 8),
-          };
-        }),
-    }));
+      const mapped = grps.map((row) => ({
+        id: row.id,
+        name: row.name,
+        code: row.invite_code,
+        owner_id: row.owner_id,
+        createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+        members: allMem
+          .filter((m) => m.group_id === row.id)
+          .map((m) => {
+            const p = m.profiles;
+            const pr = Array.isArray(p) ? p[0] : p;
+            return {
+              id: m.user_id,
+              name: (pr && (pr.full_name || pr.email)) || String(m.user_id).slice(0, 8),
+            };
+          }),
+      }));
+      console.log("[groups] loaded groups:", mapped);
+      return mapped;
     } catch (e) {
-      console.error("loadGroupsFromSupabase:", e);
+      logSupabasePostgrestError("loadGroupsFromSupabase", e);
+      console.error(e);
+      console.log("[groups] loaded groups:", []);
       return [];
     }
   }
@@ -3582,6 +3640,10 @@ async function loadUserProfile() {
     activeGroupId = String(activeGroupId || "").trim() || null;
     if (activeGroupId && !groups.some((g) => g.id === activeGroupId)) {
       activeGroupId = null;
+    }
+    if (!activeGroupId && groups.length > 0) {
+      activeGroupId = groups[0].id;
+      saveGroupsState();
     }
     const rawProfile = loadJSON(STORAGE_PROFILE, null);
     if (rawProfile && typeof rawProfile === "object") {
@@ -4010,7 +4072,13 @@ async function loadUserProfile() {
   }
 
   async function renderGroups() {
-    const g = activeGroupId ? groups.find((x) => x.id === activeGroupId) : null;
+    console.log("[groups] renderGroups called");
+    let g = activeGroupId ? groups.find((x) => x.id === activeGroupId) : null;
+    if (!g && groups.length > 0) {
+      activeGroupId = groups[0].id;
+      saveGroupsState();
+      g = groups[0];
+    }
     if (!els.groupDetailEmpty || !els.groupDetailBody) return;
     if (!g) {
       els.groupDetailEmpty.hidden = false;
@@ -4032,7 +4100,8 @@ async function loadUserProfile() {
     if (!raw) return false;
     const { data, error } = await supabase.rpc("join_group_by_code", { p_code: raw });
     if (error) {
-      console.error("join_group_by_code:", error.message);
+      logSupabasePostgrestError("joinGroupByCode rpc", error);
+      console.error(error);
       return false;
     }
     if (!data || !data.length) return false;
@@ -4059,7 +4128,10 @@ async function loadUserProfile() {
     if (!userId) return;
     const gid = activeGroupId;
     const { error } = await supabase.from("group_members").delete().eq("group_id", gid).eq("user_id", userId);
-    if (error) console.error("leaveGroup:", error.message);
+    if (error) {
+      logSupabasePostgrestError("leaveGroup", error);
+      console.error(error);
+    }
     activeGroupId = null;
     groups = await loadGroupsFromSupabase();
     saveGroupsState();
@@ -4074,27 +4146,29 @@ async function loadUserProfile() {
     const userId = await getCurrentUserId();
     if (!userId) return null;
     for (let attempt = 0; attempt < 12; attempt++) {
-      const code = randomGroupCode();
+      const inviteCode = randomGroupCode();
       const gid = crypto.randomUUID();
       const { error: insErr } = await supabase.from("groups").insert({
         id: gid,
         name: trimmed,
         owner_id: userId,
-        invite_code: code,
+        invite_code: inviteCode,
       });
       if (insErr) {
         const msg = String(insErr.message || "");
         if (msg.includes("invite") || insErr.code === "23505") continue;
+        logSupabasePostgrestError("createGroup groups.insert", insErr);
         console.error(insErr);
         return null;
       }
       const { error: memErr } = await supabase.from("group_members").insert({ group_id: gid, user_id: userId });
       if (memErr) {
+        logSupabasePostgrestError("createGroup group_members.insert", memErr);
         console.error(memErr);
         await supabase.from("groups").delete().eq("id", gid);
         return null;
       }
-      return { id: gid, code };
+      return { id: gid, invite_code: inviteCode };
     }
     return null;
   }
@@ -4814,7 +4888,7 @@ async function loadUserProfile() {
     activeGroupId = created.id;
     saveGroupsState();
     const g = groups.find((x) => x.id === created.id);
-    const displayCode = g ? g.code : created.code;
+    const displayCode = g ? g.code : created.invite_code;
     const link = getInviteUrl(displayCode);
     lastGroupShareContext = { name, code: displayCode, link };
     if (els.groupCreateStepForm) els.groupCreateStepForm.hidden = true;
@@ -5041,8 +5115,13 @@ async function loadUserProfile() {
     const ymd = getSelfcareSelectedDate();
     const payload = sanitizeSelfcareEntry(getSelfcareFormEntry());
     if (!selfcareEntryHasContent(payload)) {
+      const okDel = await deleteSelfcareEntryFromSupabase(ymd);
+      if (!okDel) {
+        setSelfcareStatus(t("selfcare.statusDraft"));
+        return;
+      }
       delete selfcareJournal[ymd];
-      await deleteSelfcareEntryFromSupabase(ymd);
+      await loadSelfcareEntriesFromSupabase();
       setSelfcareStatus(t("selfcare.statusIdle"));
       clearSelfcareForm();
       selfcareDirty = false;
@@ -5051,8 +5130,12 @@ async function loadUserProfile() {
       void refreshAchievements(Boolean(showToastMsg));
       return;
     }
-    selfcareJournal[ymd] = payload;
-    await upsertSelfcareEntryToSupabase(ymd, payload);
+    const ok = await upsertSelfcareEntryToSupabase(ymd, payload);
+    if (!ok) {
+      setSelfcareStatus(t("selfcare.statusDraft"));
+      return;
+    }
+    await loadSelfcareEntriesFromSupabase();
     selfcareDirty = false;
     renderSelfcarePreview(ymd);
     renderSelfcareEntriesList();

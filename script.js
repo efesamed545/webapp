@@ -2202,6 +2202,7 @@ async function loadUserProfile() {
         supabase.from("events").delete().eq("user_id", userId),
         supabase.from("selfcare_entries").delete().eq("user_id", userId),
         supabase.from("focus_sessions").delete().eq("user_id", userId),
+        supabase.from("focus_state").delete().eq("user_id", userId),
         supabase.from("achievements").delete().eq("user_id", userId),
         supabase.from("buddy_state").delete().eq("user_id", userId),
         supabase.from("points_log").delete().eq("user_id", userId),
@@ -2250,13 +2251,14 @@ async function loadUserProfile() {
   }
 
   function renderSettingsGroupSection() {
-    const g = activeGroupId ? groups.find((x) => x.id === activeGroupId) : null;
+    const g = activeGroupId ? findGroupInState(activeGroupId) : null;
     if (els.settingsGroupEmpty) els.settingsGroupEmpty.hidden = !!g;
     if (els.settingsGroupBody) els.settingsGroupBody.hidden = !g;
     if (!g) return;
-    if (els.settingsGroupName) els.settingsGroupName.textContent = g.name;
-    if (els.settingsGroupCode) els.settingsGroupCode.textContent = g.code;
-    if (els.settingsGroupLink) els.settingsGroupLink.value = getInviteUrl(g.code);
+    const sgCode = g.code || g.inviteCode || "";
+    if (els.settingsGroupName) els.settingsGroupName.textContent = g.name || "";
+    if (els.settingsGroupCode) els.settingsGroupCode.textContent = sgCode;
+    if (els.settingsGroupLink) els.settingsGroupLink.value = getInviteUrl(sgCode);
     if (els.settingsGroupMembers) {
       els.settingsGroupMembers.innerHTML = "";
       g.members.forEach((m) => {
@@ -2488,10 +2490,10 @@ async function loadUserProfile() {
       setView("groups");
     });
     document.getElementById("btnSettingsCopyCode")?.addEventListener("click", async () => {
-      const g = activeGroupId ? groups.find((x) => x.id === activeGroupId) : null;
+      const g = activeGroupId ? findGroupInState(activeGroupId) : null;
       if (!g || !navigator.clipboard) return;
       try {
-        await navigator.clipboard.writeText(g.code);
+        await navigator.clipboard.writeText(g.code || g.inviteCode || "");
         showToast(t("groups.copied"));
       } catch (_) {}
     });
@@ -2549,6 +2551,14 @@ async function loadUserProfile() {
   let groups = [];
   /** @type {string|null} */
   let activeGroupId = null;
+
+  /** Resolve a group by id with stable string comparison (Supabase UUID vs in-memory string). */
+  function findGroupInState(groupId) {
+    if (groupId == null || groupId === "") return null;
+    const sid = String(groupId);
+    return groups.find((g) => String(g.id) === sid) || null;
+  }
+
   /** @type {{partnerName:string,partnerActiveDates:string[],buddyLongest:number,lastPartnerYmd:string|null,lastMeYmd:string|null}} */
   let buddy = {
     partnerName: "",
@@ -2589,6 +2599,7 @@ async function loadUserProfile() {
     breakRemainingSec: 5 * 60,
     breakRunning: false,
     breakTickId: 0,
+    lastFocusStatePersistAt: 0,
   };
 
 
@@ -3267,6 +3278,66 @@ async function loadUserProfile() {
     }
   }
 
+  async function persistFocusStateRunning() {
+    const userId = await getCurrentUserId();
+    if (!userId || !focusTimer.running) return;
+    const effectiveStartMs = focusTimer.endAtMs - focusTimer.durationSec * 1000;
+    const durationMin = Math.max(1, Math.round(focusTimer.durationSec / 60));
+    try {
+      const { error } = await supabase.from("focus_state").upsert(
+        {
+          user_id: userId,
+          task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
+          started_at: new Date(effectiveStartMs).toISOString(),
+          duration_minutes: durationMin,
+          is_running: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+      if (error) throw error;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function clearFocusStateInSupabase() {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { error } = await supabase.from("focus_state").delete().eq("user_id", userId);
+      if (error) throw error;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function completeExpiredFocusSessionFromRow(row) {
+    const durationMin = Math.max(1, Number(row.duration_minutes) || 1);
+    const startedAt = row.started_at ? new Date(row.started_at).getTime() : Date.now() - durationMin * 60 * 1000;
+    const endedAt = startedAt + durationMin * 60 * 1000;
+    const tid = row.task_id != null ? String(row.task_id) : null;
+    const tk = tid ? tasks.find((t) => String(t.id) === tid) : null;
+    const session = {
+      id: uid(),
+      taskId: tid,
+      taskTitle: tk ? String(tk.title || "") : "",
+      durationMin,
+      completed: true,
+      startedAt,
+      endedAt,
+      mode: focusTimer.mode,
+      route: "",
+    };
+    focusHistory.unshift(session);
+    focusHistory = focusHistory.slice(0, 120);
+    await insertFocusSessionToSupabase(session);
+    await clearFocusStateInSupabase();
+    notifyFocusCompleted(session);
+    renderFocusHistory();
+    await refreshAchievements(true);
+  }
+
   async function loadAchievementsFromSupabase() {
     achievementsState = { unlocked: {} };
     achievementRowIds = {};
@@ -3522,6 +3593,38 @@ async function loadUserProfile() {
     };
   }
 
+  /** Map Supabase `groups` row + joined members to the shape the UI expects (camelCase + aliases). */
+  function normalizeGroupFromSupabase(row, allMem, userId) {
+    const gid = row?.id != null ? String(row.id) : "";
+    const inviteRaw = row?.invite_code != null ? row.invite_code : row?.code;
+    const code = String(inviteRaw ?? "").trim();
+    const oid = row?.owner_id != null ? String(row.owner_id) : "";
+    const uidStr = userId != null ? String(userId) : "";
+    const role = uidStr && oid === uidStr ? "owner" : "member";
+    const members = (allMem || [])
+      .filter((m) => String(m.group_id) === gid)
+      .map((m) => {
+        const p = m.profiles;
+        const pr = Array.isArray(p) ? p[0] : p;
+        const mid = m.user_id != null ? String(m.user_id) : "";
+        return {
+          id: mid,
+          name: (pr && (pr.full_name || pr.email)) || (mid ? mid.slice(0, 8) : "?"),
+        };
+      });
+    return {
+      id: gid,
+      name: String(row?.name ?? "").trim() || "Group",
+      inviteCode: code,
+      code,
+      ownerId: oid,
+      owner_id: row?.owner_id,
+      role,
+      members,
+      createdAt: row?.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    };
+  }
+
   async function loadGroupsFromSupabase() {
     console.log("[groups] loadGroupsFromSupabase start");
     let userId = await getCurrentUserId();
@@ -3594,23 +3697,7 @@ async function loadUserProfile() {
         allMem = (fallback || []).map((r) => ({ ...r, profiles: null }));
       }
 
-      const mapped = grps.map((row) => ({
-        id: row.id,
-        name: row.name,
-        code: row.invite_code,
-        owner_id: row.owner_id,
-        createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
-        members: allMem
-          .filter((m) => m.group_id === row.id)
-          .map((m) => {
-            const p = m.profiles;
-            const pr = Array.isArray(p) ? p[0] : p;
-            return {
-              id: m.user_id,
-              name: (pr && (pr.full_name || pr.email)) || String(m.user_id).slice(0, 8),
-            };
-          }),
-      }));
+      const mapped = grps.map((row) => normalizeGroupFromSupabase(row, allMem, userId));
       console.log("[groups] loaded groups:", mapped);
       return mapped;
     } catch (e) {
@@ -3634,15 +3721,16 @@ async function loadUserProfile() {
     if (!Array.isArray(events)) events = [];
     await loadSelfcareEntriesFromSupabase();
     await loadFocusSessionsFromSupabase();
+    await loadFocusStateFromSupabaseAndRestore();
     await loadAchievementsFromSupabase();
     await loadBuddyStateFromSupabase();
     await loadPointsLogFromSupabase();
     activeGroupId = String(activeGroupId || "").trim() || null;
-    if (activeGroupId && !groups.some((g) => g.id === activeGroupId)) {
+    if (activeGroupId && !groups.some((g) => String(g.id) === String(activeGroupId))) {
       activeGroupId = null;
     }
     if (!activeGroupId && groups.length > 0) {
-      activeGroupId = groups[0].id;
+      activeGroupId = String(groups[0].id);
       saveGroupsState();
     }
     const rawProfile = loadJSON(STORAGE_PROFILE, null);
@@ -3659,6 +3747,8 @@ async function loadUserProfile() {
       saveProfile();
     }
     await reconcilePointsLogWithSources();
+    console.log("[groups] normalized groups:", groups);
+    void renderGroups();
   }
 
   function loadAppPrefs() {
@@ -4072,26 +4162,33 @@ async function loadUserProfile() {
   }
 
   async function renderGroups() {
-    console.log("[groups] renderGroups called");
-    let g = activeGroupId ? groups.find((x) => x.id === activeGroupId) : null;
+    console.log("[groups] renderGroups called with:", groups);
+    let g = activeGroupId ? findGroupInState(activeGroupId) : null;
     if (!g && groups.length > 0) {
-      activeGroupId = groups[0].id;
+      activeGroupId = String(groups[0].id);
       saveGroupsState();
       g = groups[0];
     }
-    if (!els.groupDetailEmpty || !els.groupDetailBody) return;
+    const emptyEl = els.groupDetailEmpty || document.getElementById("groupDetailEmpty");
+    const bodyEl = els.groupDetailBody || document.getElementById("groupDetailBody");
+    if (!emptyEl || !bodyEl) return;
     if (!g) {
-      els.groupDetailEmpty.hidden = false;
-      els.groupDetailBody.hidden = true;
+      emptyEl.hidden = false;
+      bodyEl.hidden = true;
       if (els.settingsModal && !els.settingsModal.hidden) renderSettingsGroupSection();
       return;
     }
-    els.groupDetailEmpty.hidden = true;
-    els.groupDetailBody.hidden = false;
-    if (els.groupDetailName) els.groupDetailName.textContent = g.name;
-    if (els.groupDetailCode) els.groupDetailCode.textContent = g.code;
-    if (els.groupInviteLink) els.groupInviteLink.value = getInviteUrl(g.code);
-    await renderGroupRanking(g);
+    emptyEl.hidden = true;
+    bodyEl.hidden = false;
+    const displayCode = g.code || g.inviteCode || "";
+    if (els.groupDetailName) els.groupDetailName.textContent = g.name || "";
+    if (els.groupDetailCode) els.groupDetailCode.textContent = displayCode;
+    if (els.groupInviteLink) els.groupInviteLink.value = getInviteUrl(displayCode);
+    try {
+      await renderGroupRanking(g);
+    } catch (err) {
+      console.error("[groups] renderGroupRanking:", err);
+    }
     if (els.settingsModal && !els.settingsModal.hidden) renderSettingsGroupSection();
   }
 
@@ -4107,9 +4204,9 @@ async function loadUserProfile() {
     if (!data || !data.length) return false;
     groups = await loadGroupsFromSupabase();
     const gid = data[0].gid;
-    const g = groups.find((x) => x.id === gid);
+    const g = findGroupInState(gid);
     if (g) {
-      activeGroupId = g.id;
+      activeGroupId = String(g.id);
       saveGroupsState();
     }
     await refreshAchievements(true);
@@ -4526,7 +4623,7 @@ async function loadUserProfile() {
       });
     }
 
-    const rows = g.members
+    const rows = (Array.isArray(g.members) ? g.members : [])
       .map((m) => ({
         id: m.id,
         name: m.name || m.id,
@@ -4885,10 +4982,10 @@ async function loadUserProfile() {
       return;
     }
     groups = await loadGroupsFromSupabase();
-    activeGroupId = created.id;
+    activeGroupId = String(created.id);
     saveGroupsState();
-    const g = groups.find((x) => x.id === created.id);
-    const displayCode = g ? g.code : created.invite_code;
+    const g = findGroupInState(created.id);
+    const displayCode = g ? g.code || g.inviteCode : created.invite_code;
     const link = getInviteUrl(displayCode);
     lastGroupShareContext = { name, code: displayCode, link };
     if (els.groupCreateStepForm) els.groupCreateStepForm.hidden = true;
@@ -5175,6 +5272,15 @@ async function loadUserProfile() {
     return tasks.filter((tk) => !tk.completed);
   }
 
+  /** Open task for focus, or any task by id (e.g. restored session). */
+  function focusTaskForUi(id) {
+    if (!id) return null;
+    const open = getOpenTasksForFocus();
+    const o = open.find((tk) => String(tk.id) === String(id));
+    if (o) return o;
+    return tasks.find((tk) => String(tk.id) === String(id)) || null;
+  }
+
   function formatFocusClock(sec) {
     const safe = Math.max(0, Math.floor(sec));
     const h = Math.floor(safe / 3600);
@@ -5216,13 +5322,22 @@ async function loadUserProfile() {
         opt.textContent = tk.title;
         els.focusTaskSelect.appendChild(opt);
       });
-      focusTimer.selectedTaskId = open.some((tk) => tk.id === prev) ? prev : open[0].id;
+      let sel = open[0].id;
+      if (prev && open.some((tk) => tk.id === prev)) sel = prev;
+      else if (focusTimer.running && prev) {
+        sel = prev;
+        const ghost = document.createElement("option");
+        ghost.value = prev;
+        ghost.textContent = focusTaskForUi(prev)?.title || String(prev).slice(0, 8);
+        els.focusTaskSelect.appendChild(ghost);
+      }
+      focusTimer.selectedTaskId = sel;
       els.focusTaskSelect.value = focusTimer.selectedTaskId;
     }
   }
 
   function refreshFocusActiveTaskCard() {
-    const tk = getFocusTaskById(focusTimer.selectedTaskId);
+    const tk = focusTaskForUi(focusTimer.selectedTaskId);
     if (els.focusTaskTitle) els.focusTaskTitle.textContent = tk ? tk.title : t("focus.noTaskSelected");
     if (els.focusTaskNotes) {
       const notes = tk && tk.notes ? tk.notes.trim() : "";
@@ -5232,7 +5347,7 @@ async function loadUserProfile() {
 
   function refreshFocusGuidance() {
     if (!els.focusGuidanceText) return;
-    const tk = getFocusTaskById(focusTimer.selectedTaskId);
+    const tk = focusTaskForUi(focusTimer.selectedTaskId);
     const min = Math.max(1, Math.round(focusTimer.durationSec / 60));
     const picks = [
       t("focus.guidance.one").replace("{m}", String(min)),
@@ -5340,6 +5455,7 @@ async function loadUserProfile() {
       focusTimer.paused = false;
       focusTimer.preEndNotified = false;
       updateFocusTimerUi();
+      await clearFocusStateInSupabase();
       return;
     }
     const endedAt = Date.now();
@@ -5347,7 +5463,9 @@ async function loadUserProfile() {
     const session = {
       id: focusTimer.activeSessionId,
       taskId: focusTimer.selectedTaskId || null,
-      taskTitle: focusTimer.activeTaskTitle || (getFocusTaskById(focusTimer.selectedTaskId)?.title || ""),
+      taskTitle:
+        focusTimer.activeTaskTitle ||
+        (focusTaskForUi(focusTimer.selectedTaskId)?.title || ""),
       durationMin: min,
       completed: Boolean(completed),
       startedAt: focusTimer.startedAtMs || endedAt,
@@ -5357,17 +5475,92 @@ async function loadUserProfile() {
     focusHistory.unshift(session);
     focusHistory = focusHistory.slice(0, 120);
     await insertFocusSessionToSupabase(session);
+    await clearFocusStateInSupabase();
     if (completed) notifyFocusCompleted(session);
     focusTimer.running = false;
     focusTimer.paused = false;
     focusTimer.activeSessionId = "";
     focusTimer.preEndNotified = false;
     focusTimer.remainingSec = focusTimer.durationSec;
+    focusTimer.lastFocusStatePersistAt = 0;
     updateFocusTimerUi();
     renderFocusHistory();
     await refreshAchievements(Boolean(completed));
     refreshFocusGuidance();
     if (completed) startBreak(true);
+  }
+
+  function scheduleFocusTick() {
+    stopFocusTick();
+    focusTimer.tickId = setInterval(() => {
+      if (!focusTimer.running || focusTimer.paused) return;
+      const left = Math.max(0, Math.round((focusTimer.endAtMs - Date.now()) / 1000));
+      focusTimer.remainingSec = left;
+      const now = Date.now();
+      if (now - (focusTimer.lastFocusStatePersistAt || 0) > 45000) {
+        focusTimer.lastFocusStatePersistAt = now;
+        void persistFocusStateRunning();
+      }
+      if (!focusTimer.preEndNotified && left > 0 && left <= 60) {
+        focusTimer.preEndNotified = true;
+        showToast(t("focus.almostDone"), { type: "accent" });
+      }
+      updateFocusTimerUi();
+      if (left <= 0) void finishFocusSession(true);
+    }, 1000);
+  }
+
+  async function loadFocusStateFromSupabaseAndRestore() {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase.from("focus_state").select("*").eq("user_id", userId).maybeSingle();
+      if (error) throw error;
+      console.log("[focus] loaded focus_state:", data);
+      if (!data || !data.is_running) {
+        console.log("[focus] restored active timer:", false);
+        return;
+      }
+      const durationSec = Math.max(60, (Number(data.duration_minutes) || 25) * 60);
+      const startMs = data.started_at ? new Date(data.started_at).getTime() : NaN;
+      if (!Number.isFinite(startMs)) {
+        console.log("[focus] restored active timer:", false);
+        await clearFocusStateInSupabase();
+        return;
+      }
+      const endMs = startMs + durationSec * 1000;
+      const remainingSec = Math.max(0, Math.round((endMs - Date.now()) / 1000));
+      if (remainingSec <= 0) {
+        console.log("[focus] restored active timer:", false);
+        await completeExpiredFocusSessionFromRow(data);
+        return;
+      }
+      focusTimer.durationSec = durationSec;
+      focusTimer.remainingSec = remainingSec;
+      focusTimer.startedAtMs = startMs;
+      focusTimer.endAtMs = endMs;
+      focusTimer.running = true;
+      focusTimer.paused = false;
+      focusTimer.preEndNotified = remainingSec <= 60;
+      focusTimer.activeSessionId = uid();
+      focusTimer.selectedTaskId = data.task_id ? String(data.task_id) : "";
+      const tk = focusTaskForUi(focusTimer.selectedTaskId);
+      focusTimer.activeTaskTitle = tk ? String(tk.title || "") : "";
+      focusTimer.lastFocusStatePersistAt = Date.now();
+      stopFocusTick();
+      stopBreakTick();
+      focusTimer.breakRunning = false;
+      showBreakPanel(false);
+      document.body.classList.add("focus-session-active");
+      scheduleFocusTick();
+      updateFocusTimerUi();
+      refreshFocusActiveTaskCard();
+      refreshFocusGuidance();
+      void persistFocusStateRunning();
+      console.log("[focus] restored active timer:", true);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   function startFocusSession() {
@@ -5388,21 +5581,13 @@ async function loadUserProfile() {
     focusTimer.activeSessionId = uid();
     focusTimer.activeTaskTitle = tk.title || "";
     focusTimer.distractionSelections = $$(".focus-distraction:checked").map((x) => x.value);
+    focusTimer.lastFocusStatePersistAt = Date.now();
     stopFocusTick();
     document.body.classList.add("focus-session-active");
     updateFocusTimerUi();
     refreshFocusGuidance();
-    focusTimer.tickId = setInterval(() => {
-      if (!focusTimer.running || focusTimer.paused) return;
-      const left = Math.max(0, Math.round((focusTimer.endAtMs - Date.now()) / 1000));
-      focusTimer.remainingSec = left;
-      if (!focusTimer.preEndNotified && left > 0 && left <= 60) {
-        focusTimer.preEndNotified = true;
-        showToast(t("focus.almostDone"), { type: "accent" });
-      }
-      updateFocusTimerUi();
-      if (left <= 0) void finishFocusSession(true);
-    }, 1000);
+    void persistFocusStateRunning();
+    scheduleFocusTick();
   }
 
   function pauseFocusSession() {
@@ -5416,7 +5601,9 @@ async function loadUserProfile() {
     if (!focusTimer.running || !focusTimer.paused) return;
     focusTimer.paused = false;
     focusTimer.endAtMs = Date.now() + focusTimer.remainingSec * 1000;
+    focusTimer.lastFocusStatePersistAt = Date.now();
     updateFocusTimerUi();
+    void persistFocusStateRunning();
   }
 
   function endFocusSessionEarly() {
@@ -5479,9 +5666,11 @@ async function loadUserProfile() {
     const selfcareDays = getSelfcareDayKeys();
     const selfcareSet = new Set(selfcareDays);
     const activitySet = new Set([...collectActivityDays(), ...selfcareDays]);
-    const createdByMeCount = groups.filter((g) => g.owner_id === profile.id).length;
+    const createdByMeCount = groups.filter(
+      (g) => String(g.ownerId || g.owner_id || "") === String(profile.id || "")
+    ).length;
     const invitedCount = groups.reduce((acc, g) => {
-      if (g.owner_id !== profile.id) return acc;
+      if (String(g.ownerId || g.owner_id || "") !== String(profile.id || "")) return acc;
       return Math.max(acc, Array.isArray(g.members) ? g.members.length : 0);
     }, 0);
     return {
@@ -7550,10 +7739,10 @@ async function loadUserProfile() {
     });
 
     els.btnCopyGroupCode?.addEventListener("click", async () => {
-      const g = activeGroupId ? groups.find((x) => x.id === activeGroupId) : null;
+      const g = activeGroupId ? findGroupInState(activeGroupId) : null;
       if (!g || !navigator.clipboard) return;
       try {
-        await navigator.clipboard.writeText(g.code);
+        await navigator.clipboard.writeText(g.code || g.inviteCode || "");
         showToast(t("groups.copied"));
       } catch (_) {}
     });

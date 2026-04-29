@@ -2214,8 +2214,6 @@ async function loadUserProfile() {
       console.error("clearLocalAppData:", e);
     }
     activeGroupId = null;
-    appPrefs.activeGroupId = "";
-    saveAppPrefs();
     buddy = {
       partnerName: "",
       partnerActiveDates: [],
@@ -3181,6 +3179,18 @@ async function loadUserProfile() {
     }
   }
 
+  // Compatibility aliases (Supabase-only paths)
+  async function loadSelfcareFromSupabase() {
+    await loadSelfcareEntriesFromSupabase();
+    return selfcareJournal;
+  }
+  async function insertSelfcareToSupabase(ymd, payload) {
+    return upsertSelfcareEntryToSupabase(ymd, payload);
+  }
+  async function deleteSelfcareFromSupabase(ymd) {
+    return deleteSelfcareEntryFromSupabase(ymd);
+  }
+
   async function loadFocusSessionsFromSupabase() {
     focusHistory = [];
     const userId = await getCurrentUserId();
@@ -3357,6 +3367,14 @@ async function loadUserProfile() {
     } catch (e) {
       console.error("loadPointsLogFromSupabase:", e);
     }
+  }
+
+  async function insertPointsLog(payload) {
+    return insertPointEntry(payload);
+  }
+  async function loadPoints() {
+    await loadPointsLogFromSupabase();
+    return pointsLogCache;
   }
 
   async function addPoints(points, source, dayYmd, refKey) {
@@ -3544,6 +3562,9 @@ async function loadUserProfile() {
       return [];
     }
   }
+  async function loadGroups() {
+    return loadGroupsFromSupabase();
+  }
 
   async function loadState() {
     groups = await loadGroupsFromSupabase();
@@ -3558,10 +3579,9 @@ async function loadUserProfile() {
     await loadAchievementsFromSupabase();
     await loadBuddyStateFromSupabase();
     await loadPointsLogFromSupabase();
-    activeGroupId = String(appPrefs.activeGroupId || "").trim() || null;
+    activeGroupId = String(activeGroupId || "").trim() || null;
     if (activeGroupId && !groups.some((g) => g.id === activeGroupId)) {
       activeGroupId = null;
-      saveGroupsState();
     }
     const rawProfile = loadJSON(STORAGE_PROFILE, null);
     if (rawProfile && typeof rawProfile === "object") {
@@ -3668,8 +3688,8 @@ async function loadUserProfile() {
 
   function saveGroupsState() {
     try {
-      appPrefs.activeGroupId = activeGroupId || "";
-      saveAppPrefs();
+      // Group selection is in-memory only; group data persists in Supabase.
+      activeGroupId = activeGroupId ? String(activeGroupId) : null;
     } catch (e) {
       console.error("saveGroupsState:", e);
     }
@@ -4029,6 +4049,9 @@ async function loadUserProfile() {
     void startSupabaseRealtime();
     return true;
   }
+  async function joinGroup(code) {
+    return joinGroupByCode(code);
+  }
 
   async function leaveGroup() {
     if (!activeGroupId) return;
@@ -4043,6 +4066,37 @@ async function loadUserProfile() {
     await renderGroups();
     showToast(t("settings.leftGroup"));
     void startSupabaseRealtime();
+  }
+
+  async function createGroup(name) {
+    const trimmed = String(name || "").trim();
+    if (!trimmed) return null;
+    const userId = await getCurrentUserId();
+    if (!userId) return null;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const code = randomGroupCode();
+      const gid = crypto.randomUUID();
+      const { error: insErr } = await supabase.from("groups").insert({
+        id: gid,
+        name: trimmed,
+        owner_id: userId,
+        invite_code: code,
+      });
+      if (insErr) {
+        const msg = String(insErr.message || "");
+        if (msg.includes("invite") || insErr.code === "23505") continue;
+        console.error(insErr);
+        return null;
+      }
+      const { error: memErr } = await supabase.from("group_members").insert({ group_id: gid, user_id: userId });
+      if (memErr) {
+        console.error(memErr);
+        await supabase.from("groups").delete().eq("id", gid);
+        return null;
+      }
+      return { id: gid, code };
+    }
+    return null;
   }
 
   async function parseJoinFromQuery() {
@@ -4751,38 +4805,7 @@ async function loadUserProfile() {
       els.groupModalName?.focus();
       return;
     }
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      showToast(t("groups.createFailed"));
-      return;
-    }
-    let created = /** @type {{ id: string, code: string } | null} */ (null);
-    for (let attempt = 0; attempt < 12; attempt++) {
-      const code = randomGroupCode();
-      const gid = crypto.randomUUID();
-      const { error: insErr } = await supabase.from("groups").insert({
-        id: gid,
-        name,
-        owner_id: userId,
-        invite_code: code,
-      });
-      if (insErr) {
-        const msg = String(insErr.message || "");
-        if (msg.includes("invite") || insErr.code === "23505") continue;
-        console.error(insErr);
-        showToast(t("groups.createFailed"));
-        return;
-      }
-      const { error: memErr } = await supabase.from("group_members").insert({ group_id: gid, user_id: userId });
-      if (memErr) {
-        console.error(memErr);
-        await supabase.from("groups").delete().eq("id", gid);
-        showToast(t("groups.createFailed"));
-        return;
-      }
-      created = { id: gid, code };
-      break;
-    }
+    const created = await createGroup(name);
     if (!created) {
       showToast(t("groups.createFailed"));
       return;

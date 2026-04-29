@@ -3215,42 +3215,113 @@ async function loadUserProfile() {
     return deleteSelfcareEntryFromSupabase(ymd);
   }
 
+  /** Map one `focus_sessions` row to the in-memory session shape used by the Focus UI. */
+  function mapFocusSessionRow(row) {
+    let rawMeta = row.meta;
+    if (typeof rawMeta === "string") {
+      try {
+        rawMeta = JSON.parse(rawMeta);
+      } catch (_) {
+        rawMeta = {};
+      }
+    }
+    const m = rawMeta && typeof rawMeta === "object" ? rawMeta : {};
+    const createdAt = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+    const dayRaw = row.day != null ? row.day : row.date != null ? row.date : null;
+    const date =
+      typeof dayRaw === "string"
+        ? dayRaw.slice(0, 10)
+        : dayRaw != null
+          ? String(dayRaw).slice(0, 10)
+          : row.created_at
+            ? String(row.created_at).slice(0, 10)
+            : formatYMD(new Date(createdAt));
+    const startedRaw = m.startedAt;
+    const endedRaw = m.endedAt;
+    const startedAt =
+      typeof startedRaw === "number" && Number.isFinite(startedRaw)
+        ? startedRaw
+        : typeof startedRaw === "string"
+          ? Number(startedRaw)
+          : NaN;
+    const endedAt =
+      typeof endedRaw === "number" && Number.isFinite(endedRaw)
+        ? endedRaw
+        : typeof endedRaw === "string"
+          ? Number(endedRaw)
+          : NaN;
+    const fallbackTime = createdAt;
+    return {
+      id: row.id,
+      taskId: m.taskId != null ? String(m.taskId) : null,
+      taskTitle: String(m.taskTitle || ""),
+      durationMin: Math.max(0, Number(row.duration) || 0),
+      completed: Boolean(m.completed),
+      startedAt: Number.isFinite(startedAt) ? startedAt : fallbackTime,
+      endedAt: Number.isFinite(endedAt) ? endedAt : fallbackTime,
+      mode: String(m.mode || "classic"),
+      route: String(m.route || ""),
+      date,
+      createdAt,
+      meta: m,
+    };
+  }
+
   async function loadFocusSessionsFromSupabase() {
-    focusHistory = [];
-    const userId = await getCurrentUserId();
-    if (!userId) return;
+    console.log("[focus] load sessions start");
+    let userId = await getCurrentUserId();
+    if (!userId) {
+      try {
+        const s = readSessionRaw();
+        if (s?.userId) userId = s.userId;
+      } catch (_) {}
+    }
+    if (!userId) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        userId = data?.session?.user?.id || null;
+      } catch (_) {}
+    }
+    if (!userId) {
+      try {
+        const { data } = await supabase.auth.getUser();
+        userId = data?.user?.id || null;
+      } catch (_) {}
+    }
+    if (!userId) {
+      console.log("[focus] raw focus_sessions:", []);
+      console.log("[focus] mapped focus sessions:", []);
+      focusHistory = [];
+      renderFocusHistory();
+      return;
+    }
     try {
-      const { data, error } = await supabase
+      const { data: rows, error } = await supabase
         .from("focus_sessions")
         .select("id,duration,day,meta,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(120);
       if (error) throw error;
-      focusHistory = (data || []).map((row) => {
-        const m = row.meta && typeof row.meta === "object" ? row.meta : {};
-        const dayStr = typeof row.day === "string" ? row.day : String(row.day || "").slice(0, 10);
-        const created = row.created_at ? new Date(row.created_at).getTime() : Date.now();
-        return {
-          id: row.id,
-          taskId: m.taskId != null ? String(m.taskId) : null,
-          taskTitle: String(m.taskTitle || ""),
-          durationMin: Number(row.duration) || 0,
-          completed: Boolean(m.completed),
-          startedAt: Number(m.startedAt) || created,
-          endedAt: Number(m.endedAt) || created,
-          mode: String(m.mode || "classic"),
-          route: String(m.route || ""),
-        };
-      });
+      console.log("[focus] raw focus_sessions:", rows);
+      const mapped = (rows || []).map(mapFocusSessionRow);
+      console.log("[focus] mapped focus sessions:", mapped);
+      focusHistory = mapped;
+      renderFocusHistory();
     } catch (e) {
       console.error("loadFocusSessionsFromSupabase:", e);
+      focusHistory = [];
+      renderFocusHistory();
     }
   }
 
   async function insertFocusSessionToSupabase(session) {
     const userId = await getCurrentUserId();
-    if (!userId) return false;
+    if (!userId) {
+      console.error("[focus] insert focus session error:", new Error("no authenticated user"));
+      return false;
+    }
+    const durationMin = Math.max(1, Math.round(Number(session.durationMin) || 1));
     const day = formatYMD(new Date(session.endedAt || session.startedAt || Date.now()));
     const meta = {
       taskId: session.taskId,
@@ -3261,19 +3332,30 @@ async function loadUserProfile() {
       mode: session.mode,
       route: session.route,
     };
+    const rowId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : session.id;
+    const payload = {
+      id: rowId,
+      user_id: userId,
+      duration: durationMin,
+      day,
+      meta,
+      created_at: new Date(session.endedAt || Date.now()).toISOString(),
+    };
     try {
-      const { error } = await supabase.from("focus_sessions").insert({
-        id: session.id,
-        user_id: userId,
-        duration: Math.max(1, Math.round(Number(session.durationMin) || 1)),
-        day,
-        meta,
-        created_at: new Date(session.endedAt || Date.now()).toISOString(),
-      });
-      if (error) throw error;
+      console.log("[focus] inserting focus session:", payload);
+      const { data, error } = await supabase.from("focus_sessions").insert(payload).select().maybeSingle();
+      if (error) {
+        console.error("[focus] insert focus session error:", error);
+        return false;
+      }
+      session.id = rowId;
+      console.log("[focus] inserted focus session:", data);
       return true;
     } catch (e) {
-      console.error("insertFocusSessionToSupabase:", e);
+      console.error("[focus] insert focus session error:", e);
       return false;
     }
   }
@@ -5359,6 +5441,7 @@ async function loadUserProfile() {
   }
 
   function renderFocusHistory() {
+    console.log("[focus] renderFocusHistory called");
     if (!els.focusSessionList || !els.focusSessionEmpty) return;
     els.focusSessionList.innerHTML = "";
     const last = focusHistory.slice(0, 6);
@@ -5368,7 +5451,10 @@ async function loadUserProfile() {
       li.className = "focus-session-item";
       const title = s.taskTitle || t("focus.noTaskSelected");
       const dur = formatFocusMinutesLabel(s.durationMin || 0);
-      const when = shortDateLabel(formatYMD(new Date(s.endedAt || s.startedAt || Date.now())));
+      const endMs = s.endedAt || s.createdAt || s.startedAt || Date.now();
+      const when = shortDateLabel(
+        s.date ? s.date : formatYMD(new Date(typeof endMs === "number" ? endMs : Date.now()))
+      );
       li.innerHTML = `<span>${title} · ${dur}</span><time>${when}</time>`;
       els.focusSessionList.appendChild(li);
     });
@@ -5472,9 +5558,21 @@ async function loadUserProfile() {
       endedAt,
       mode: focusTimer.mode,
     };
+    if (completed) console.log("[focus] timer completed");
+    const persisted = await insertFocusSessionToSupabase(session);
+    if (!persisted) {
+      focusTimer.running = false;
+      focusTimer.paused = false;
+      focusTimer.activeSessionId = "";
+      focusTimer.preEndNotified = false;
+      focusTimer.remainingSec = focusTimer.durationSec;
+      focusTimer.lastFocusStatePersistAt = 0;
+      updateFocusTimerUi();
+      refreshFocusGuidance();
+      return;
+    }
     focusHistory.unshift(session);
     focusHistory = focusHistory.slice(0, 120);
-    await insertFocusSessionToSupabase(session);
     await clearFocusStateInSupabase();
     if (completed) notifyFocusCompleted(session);
     focusTimer.running = false;

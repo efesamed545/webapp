@@ -825,6 +825,15 @@ border: none;
 @media (max-width: 640px) {
   .settings-layout {
     grid-template-columns: 1fr;
+    min-height: 0;
+    gap: 0.75rem;
+  }
+
+  .settings-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .settings-nav {
@@ -832,16 +841,30 @@ border: none;
     flex-wrap: wrap;
     position: static;
     max-height: none;
+    gap: 0.35rem;
   }
 
   .settings-nav-btn {
     flex: 1 1 auto;
     text-align: center;
     min-width: calc(33% - 0.25rem);
+    min-height: 44px;
+    padding: 0.55rem 0.5rem;
+    font-size: 0.8125rem;
   }
 
   .settings-content-scroll {
     max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 0.15rem;
+  }
+
+  .modal-card--settings {
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -3895,6 +3918,88 @@ body.focus-session-active .coach-banner {
 
 .modal-body {
   padding: 1.25rem;
+}
+
+/* ——— Modals: mobile (≤640px) — safe area, max height, sticky header + close ——— */
+@media (max-width: 640px) {
+  html,
+  body {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+
+  .modal {
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+  }
+
+  .modal-card {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin: 0.5rem auto;
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  .modal-head,
+  .modal-head--event {
+    position: relative;
+    flex-shrink: 0;
+    z-index: 6;
+    padding: 0.75rem 3.25rem 0.75rem 0.85rem;
+    background: var(--bg-card);
+  }
+
+  .modal-head h2,
+  .modal-head--event h2 {
+    font-size: 1.05rem;
+  }
+
+  .modal-head .modal-close,
+  .modal-head--event .modal-close {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 8;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    background: var(--bg-card);
+    box-shadow: 0 0 0 1px var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .modal-head--event {
+    align-items: flex-start;
+  }
+
+  .modal-head--event .modal-head-event-text {
+    padding-right: 0.25rem;
+  }
+
+  .modal-body,
+  form.modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.85rem 0.9rem 1rem;
+  }
+
+  .modal-foot {
+    flex-shrink: 0;
+  }
 }
 
 .modal-card--event {

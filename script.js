@@ -28,9 +28,7 @@ async function checkUser() {
   if (data && data.session) {
     document.getElementById("authGate").hidden = true;
     document.getElementById("app").hidden = false;
-
-    await saveUserProfile();
-    await loadUserProfile();
+    /* Profile: Supabase via mergeProfileFromSupabase in loadState — do not sync OAuth here (race / overwrite). */
   }
 }
 
@@ -246,82 +244,54 @@ async function loadEventsFromSupabase(groupIdsPreloaded) {
 
   return (data || []).map(mapEventFromSupabase);
 }
-async function saveUserProfile() {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-
-  if (userError || !userData?.user) {
-    console.error("Kein eingeloggter User gefunden");
-    return;
-  }
-
-  const user = userData.user;
-  profile.displayName =
-  user.user_metadata?.full_name ||
-  user.user_metadata?.name ||
-  user.email ||
-  "You";
-saveProfile();
-
-  const payload = {
-    id: user.id,
-    email: user.email || "",
-    full_name:
-      user.user_metadata?.full_name ||
-      user.user_metadata?.name ||
-      "",
-    avatar_url:
-      user.user_metadata?.avatar_url ||
-      user.user_metadata?.picture ||
-      ""
-  };
-
-  const { error } = await supabase
-    .from("profiles")
-    .upsert(payload);
-
-  if (error) {
-    console.error("Fehler beim Speichern des Profils:", error.message);
-    return;
-  }
-}
+/** Load profile row from Supabase (source of truth). Prefer mergeProfileFromSupabase during init. */
 async function loadUserProfile() {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-
-  if (userError || !userData?.user) {
+  const userId = await getCurrentUserId();
+  if (!userId) {
     console.error("Kein User zum Laden gefunden");
     return null;
   }
-
-  const user = userData.user;
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
-
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
   if (error) {
     console.error("Fehler beim Laden des Profils:", error.message);
     return null;
   }
-  profile.displayName = data.full_name || data.email || "You";
-  profile.avatarUrl = data.avatar_url || "";
-  saveProfile();
-  if (els.sidebarUserName) {
-    els.sidebarUserName.textContent = data.full_name || data.email || "You";
-  }
-  if (els.sidebarAvatar) {
-    els.sidebarAvatar.src = data.avatar_url || "";
-  }
-  if (els.sidebarAvatarHost) {
-    if (data.avatar_url) {
-      els.sidebarAvatarHost.innerHTML = `<img src="${data.avatar_url}" alt="Profilbild" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
-    } else {
-      els.sidebarAvatarHost.innerHTML = "";
-    }
-  }
+  if (!data) return null;
+  applyProfileRowFromSupabasePayload(data);
   return data;
 }
+
+/** Parse public.profiles.avatar_url into local profile avatar fields. */
+  function parseAvatarUrlFromDatabase(avatar_url) {
+    const au = avatar_url || "";
+    if (au.startsWith("flow://avatar/")) {
+      const id = au.slice("flow://avatar/".length).trim().slice(0, 16) || "p1";
+      return { avatarId: id, avatarCustom: null, avatarUrl: "" };
+    }
+    if (/^https?:\/\//i.test(au)) {
+      return { avatarId: "p1", avatarCustom: null, avatarUrl: au };
+    }
+    if (au.startsWith("data:image")) {
+      return { avatarId: "p1", avatarCustom: au, avatarUrl: "" };
+    }
+    return { avatarId: "p1", avatarCustom: null, avatarUrl: "" };
+  }
+
+  function applyProfileRowFromSupabasePayload(data) {
+    if (!data) return;
+    profile.displayName = data.full_name || data.email || profile.displayName || "You";
+    const p = parseAvatarUrlFromDatabase(data.avatar_url);
+    profile.avatarId = p.avatarId;
+    profile.avatarCustom = p.avatarCustom;
+    profile.avatarUrl = p.avatarUrl;
+    saveProfile();
+    if (typeof els !== "undefined" && els.profileDisplayName) {
+      els.profileDisplayName.value = profile.displayName;
+    }
+    if (typeof applyProfileAvatars === "function") applyProfileAvatars();
+    if (typeof syncAvatarPickerActive === "function") syncAvatarPickerActive();
+    if (typeof updateSidebarUserName === "function") updateSidebarUserName();
+  }
   // ——— Storage keys ———
   const STORAGE_THEME = "flow_theme";
   const STORAGE_LANG = "flow_lang";
@@ -2567,8 +2537,8 @@ async function loadUserProfile() {
     lastPartnerYmd: null,
     lastMeYmd: null,
   };
-  /** @type {{id:string,displayName:string,avatarId:string,avatarCustom:string|null}} */
-  let profile = { id: "", displayName: "You", avatarId: "p1", avatarCustom: null };
+  /** @type {{id:string,displayName:string,avatarId:string,avatarCustom:string|null,avatarUrl:string}} */
+  let profile = { id: "", displayName: "You", avatarId: "p1", avatarCustom: null, avatarUrl: "" };
   /** @type {Record<string, {grateful:string,smile:string,well:string,proud:string,self:string,surprise:string,updatedAt:number}>} */
   let selfcareJournal = {};
   let selfcareDirty = false;
@@ -3822,12 +3792,16 @@ async function loadUserProfile() {
         displayName: String(rawProfile.displayName || "You"),
         avatarId: String(rawProfile.avatarId || "p1"),
         avatarCustom: typeof rawProfile.avatarCustom === "string" ? rawProfile.avatarCustom : null,
+        avatarUrl: typeof rawProfile.avatarUrl === "string" ? rawProfile.avatarUrl : "",
       };
     }
+    const sessionUid = await getCurrentUserId();
+    if (sessionUid) profile.id = sessionUid;
     if (!profile.id) {
       profile.id = uid();
       saveProfile();
     }
+    await mergeProfileFromSupabase();
     await reconcilePointsLogWithSources();
     console.log("[groups] normalized groups:", groups);
     void renderGroups();
@@ -3931,6 +3905,83 @@ async function loadUserProfile() {
 
   function saveProfile() {
     localStorage.setItem(STORAGE_PROFILE, JSON.stringify(profile));
+  }
+
+  async function persistProfileToSupabase() {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.error("[profile] persistProfileToSupabase: no authenticated user");
+      return false;
+    }
+    const { data: userData, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !userData?.user) {
+      console.error("[profile] persistProfileToSupabase:", authErr || new Error("no auth user"));
+      return false;
+    }
+    const email = userData.user.email || "";
+    let avatar_url = "";
+    if (profile.avatarCustom && String(profile.avatarCustom).startsWith("data:image")) {
+      if (String(profile.avatarCustom).length > 450000) {
+        console.error("[profile] persistProfileToSupabase: avatar image too large for profiles.avatar_url");
+      } else {
+        avatar_url = profile.avatarCustom;
+      }
+    } else if (profile.avatarUrl && /^https?:\/\//i.test(profile.avatarUrl)) {
+      avatar_url = profile.avatarUrl;
+    } else if (!profile.avatarCustom && profile.avatarId) {
+      avatar_url = `flow://avatar/${profile.avatarId}`;
+    }
+    const payload = {
+      id: userId,
+      email,
+      full_name: (profile.displayName || "").trim() || "You",
+      avatar_url,
+    };
+    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
+    if (error) {
+      console.error("[profile] persistProfileToSupabase Supabase error:", error);
+      return false;
+    }
+    return true;
+  }
+
+  async function mergeProfileFromSupabase() {
+    const userId = await getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+      if (error) {
+        console.error("[profile] mergeProfileFromSupabase:", error);
+        return;
+      }
+      profile.id = userId;
+      if (!data) {
+        try {
+          const { data: userData, error: authErr } = await supabase.auth.getUser();
+          if (!authErr && userData?.user) {
+            const u = userData.user;
+            const metaName =
+              (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || "";
+            const emailLocal = (u.email || "").split("@")[0] || "";
+            if (!(profile.displayName || "").trim() || profile.displayName === "You") {
+              profile.displayName = (metaName || emailLocal || "You").trim() || "You";
+            }
+            const pic = (u.user_metadata && (u.user_metadata.avatar_url || u.user_metadata.picture)) || "";
+            if (pic && /^https?:\/\//i.test(pic) && !profile.avatarCustom) {
+              profile.avatarUrl = pic;
+            }
+          }
+        } catch (authEx) {
+          console.error("[profile] mergeProfileFromSupabase OAuth enrich:", authEx);
+        }
+        saveProfile();
+        await persistProfileToSupabase();
+        return;
+      }
+      applyProfileRowFromSupabasePayload(data);
+    } catch (e) {
+      console.error("[profile] mergeProfileFromSupabase:", e);
+    }
   }
 
   function getRemindedKeys() {
@@ -4891,9 +4942,11 @@ async function loadUserProfile() {
       b.addEventListener("click", () => {
         profile.avatarCustom = null;
         profile.avatarId = id;
+        profile.avatarUrl = "";
         saveProfile();
         syncAvatarPickerActive();
         applyProfileAvatars();
+        void persistProfileToSupabase();
       });
       els.avatarPicker.appendChild(b);
     });
@@ -4941,9 +4994,11 @@ async function loadUserProfile() {
           dataUrl = canvas.toDataURL("image/jpeg", q);
         }
         profile.avatarCustom = dataUrl;
+        profile.avatarUrl = "";
         saveProfile();
         syncAvatarPickerActive();
         applyProfileAvatars();
+        void persistProfileToSupabase();
       };
       img.onerror = () => showToast(t("settings.avatarError"));
       img.src = result;
@@ -7770,6 +7825,11 @@ async function loadUserProfile() {
       });
       saveGroupsState();
       if (currentView === "groups") void renderGroups();
+      updateSidebarUserName();
+      applyProfileAvatars();
+    });
+    els.profileDisplayName?.addEventListener("blur", () => {
+      void persistProfileToSupabase();
     });
 
     els.btnRequestNotifications?.addEventListener("click", () => requestNotificationPermission());

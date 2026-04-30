@@ -4710,6 +4710,117 @@ body.focus-session-active .coach-banner {
     min-width: 0;
     flex: 1 1 auto;
   }
+
+  /* Focus mobile: prevent clipped words/text */
+  #viewFocus,
+  .view-focus,
+  .focus-layout,
+  .focus-card,
+  .focus-card--main,
+  .focus-card--side,
+  .focus-grid,
+  .focus-active-task,
+  .focus-timer-block,
+  .focus-break,
+  .focus-actions,
+  .focus-presets,
+  .focus-session-log,
+  #focusSessionList,
+  .focus-session-item {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .focus-layout,
+  .focus-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .focus-layout > *,
+  .focus-grid > *,
+  .focus-actions > *,
+  .focus-presets > *,
+  .focus-session-item > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .focus-presets .btn,
+  .focus-actions .btn {
+    min-width: 0;
+    flex: 1 1 calc(50% - 0.35rem);
+  }
+
+  #focusTaskTitle,
+  #focusTaskNotes,
+  .focus-guidance,
+  #focusRouteProgress,
+  .focus-session-item,
+  .focus-session-item span,
+  .focus-session-item time {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  /* Achievements mobile: prevent clipped labels/badges */
+  #viewAchievements,
+  .view-achievements,
+  .achievements-layout,
+  .achievements-head-card,
+  .achievements-controls-card,
+  .achievements-grid,
+  .ach-card,
+  .ach-progress-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .achievements-grid,
+  .ach-filter-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .achievements-layout > *,
+  .achievements-grid > *,
+  .ach-filter-grid > *,
+  .ach-card > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .achievements-summary,
+  .ach-meta-row,
+  .ach-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ach-summary-pill,
+  .ach-category-pill,
+  .ach-date-pill,
+  .ach-state-tag,
+  .ach-name,
+  .ach-desc,
+  .ach-progress-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    max-width: 100%;
+  }
+
+  .ach-progress-track {
+    width: 100%;
+    max-width: 100%;
+  }
 }
 /* Settings modal
    Do not give #settingsModalBackdrop a higher z-index than #settingsModal — otherwise

@@ -4736,22 +4736,27 @@ body.focus-session-active .coach-banner {
 
   #viewFocus,
   .view-focus {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto !important;
     transform: none !important;
     padding-left: 16px;
     padding-right: 16px;
+    padding-top: 0;
+    padding-bottom: 0;
     overflow-x: hidden;
+    box-sizing: border-box;
   }
 
   .focus-layout {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
+    margin: 0 auto !important;
     transform: none !important;
     width: 100%;
     max-width: 100%;
+    min-width: 0;
     gap: 0.6rem;
     padding: 0;
+    box-sizing: border-box;
   }
 
   .focus-layout,
@@ -4769,6 +4774,8 @@ body.focus-session-active .coach-banner {
     max-width: 100%;
     margin: 0;
     box-sizing: border-box;
+    overflow-x: hidden;
+    transform: none;
   }
 
   .focus-layout > *,
@@ -4807,6 +4814,8 @@ body.focus-session-active .coach-banner {
 
   #focusTaskTitle,
   #focusTaskNotes,
+  .focus-kicker,
+  .focus-head h2,
   .focus-guidance,
   #focusRouteProgress,
   .focus-session-item,
@@ -4815,6 +4824,15 @@ body.focus-session-active .coach-banner {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: normal;
+  }
+
+  .focus-head,
+  .focus-active-task,
+  .focus-timer-block,
+  .focus-break,
+  .focus-session-log {
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
   }
 
   .focus-timer-display {

@@ -319,6 +319,94 @@ async function loadUserProfile() {
     appleClientId: "YOUR_APPLE_SERVICE_ID",
     appleRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
   };
+  const NATIVE_OAUTH_REDIRECT = "com.flow.app://auth/callback";
+  let oauthNativeBridgeBound = false;
+
+  function isCapacitorNativeRuntime() {
+    try {
+      return Boolean(window.Capacitor && typeof window.Capacitor.isNativePlatform === "function" && window.Capacitor.isNativePlatform());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function getOAuthRedirectUrl() {
+    if (isCapacitorNativeRuntime()) return NATIVE_OAUTH_REDIRECT;
+    return window.location.origin + window.location.pathname;
+  }
+
+  function getCapacitorPlugin(name) {
+    try {
+      return window.Capacitor?.Plugins?.[name] || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function completeOAuthLoginFromSupabaseSession() {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data?.session?.user) return false;
+      const u = data.session.user;
+      const meta = u.user_metadata || {};
+      const name = meta.full_name || meta.name || String(u.email || "").split("@")[0] || "You";
+      const provider = (u.app_metadata && u.app_metadata.provider) || "oauth";
+      await loginUserSuccess({ id: u.id, email: u.email || "", name }, provider);
+      return true;
+    } catch (e) {
+      console.error("completeOAuthLoginFromSupabaseSession:", e);
+      return false;
+    }
+  }
+
+  async function handleOAuthCallbackUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== "string") return false;
+    try {
+      const parsed = new URL(rawUrl);
+      const hash = parsed.hash ? parsed.hash.replace(/^#/, "") : "";
+      const hashParams = new URLSearchParams(hash);
+      const queryParams = parsed.searchParams;
+      const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
+      const code = queryParams.get("code");
+      const hasError = hashParams.get("error_description") || queryParams.get("error_description") || queryParams.get("error");
+      if (hasError) {
+        console.error("OAuth callback error:", hasError);
+        return false;
+      }
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) throw error;
+      } else if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) throw error;
+      } else {
+        return false;
+      }
+      const Browser = getCapacitorPlugin("Browser");
+      if (Browser && typeof Browser.close === "function") {
+        try {
+          await Browser.close();
+        } catch (_) {}
+      }
+      return await completeOAuthLoginFromSupabaseSession();
+    } catch (e) {
+      console.error("handleOAuthCallbackUrl:", e);
+      return false;
+    }
+  }
+
+  function bindNativeOAuthBridge() {
+    if (oauthNativeBridgeBound || !isCapacitorNativeRuntime()) return;
+    oauthNativeBridgeBound = true;
+    const AppPlugin = getCapacitorPlugin("App");
+    if (AppPlugin && typeof AppPlugin.addListener === "function") {
+      AppPlugin.addListener("appUrlOpen", (event) => {
+        if (!event?.url) return;
+        void handleOAuthCallbackUrl(event.url);
+      });
+    }
+  }
 
   /**
    * Preset avatars: 48×48 inline SVG, soft modern illustrations (neutral, inclusive).
@@ -7231,10 +7319,36 @@ async function loadUserProfile() {
   }
 
   async function handleGoogleClick() {
+    const redirectTo = getOAuthRedirectUrl();
+    if (isCapacitorNativeRuntime()) {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) {
+        alert("Google Login Fehler: " + error.message);
+        return;
+      }
+      const authUrl = data?.url;
+      if (!authUrl) {
+        alert("Google Login Fehler: OAuth URL fehlt.");
+        return;
+      }
+      const Browser = getCapacitorPlugin("Browser");
+      if (Browser && typeof Browser.open === "function") {
+        await Browser.open({ url: authUrl });
+      } else {
+        window.location.href = authUrl;
+      }
+      return;
+    }
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin + window.location.pathname
+        redirectTo
       }
     });
   
@@ -7394,6 +7508,10 @@ async function loadUserProfile() {
   // ——— Init & events ———
 
   async function init() {
+    bindNativeOAuthBridge();
+    if (isCapacitorNativeRuntime()) {
+      void handleOAuthCallbackUrl(window.location.href);
+    }
     calAnchor = startOfDay(new Date());
     selectedDateStr = formatYMD(new Date());
     loadAppPrefs();

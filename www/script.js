@@ -7443,6 +7443,13 @@ async function loadUserProfile() {
   async function init() {
     calAnchor = startOfDay(new Date());
     selectedDateStr = formatYMD(new Date());
+    document.addEventListener(
+      "click",
+      (e) => {
+        console.log("[click target]", e.target);
+      },
+      true
+    );
     loadAppPrefs();
     initLanguage();
     initAuthAndCookieListeners();

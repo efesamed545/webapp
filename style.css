@@ -4691,3 +4691,231 @@ body.focus-session-active .coach-banner {
       opacity: 0.7;
     }
   }
+
+/* iPhone mobile hardening (layout only, no data logic) */
+@media (max-width: 640px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+    font-size: 15px;
+  }
+
+  .app,
+  .main {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .main {
+    margin-left: 0;
+    padding:
+      calc(4rem + env(safe-area-inset-top, 0px))
+      calc(0.75rem + env(safe-area-inset-right, 0px))
+      calc(1rem + env(safe-area-inset-bottom, 0px))
+      calc(0.75rem + env(safe-area-inset-left, 0px));
+  }
+
+  .page-title {
+    font-size: 1.45rem;
+  }
+
+  .page-subtitle {
+    font-size: 0.875rem;
+  }
+
+  .card,
+  .groups-card,
+  .focus-card,
+  .selfcare-sheet,
+  .selfcare-history-panel,
+  .ach-card {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .dashboard-grid,
+  .dashboard-columns,
+  .motivation-grid,
+  .groups-grid,
+  .calendar-layout,
+  .selfcare-layout,
+  .achievements-grid,
+  .ach-filter-grid,
+  .focus-layout,
+  .focus-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .btn,
+  .btn-sm,
+  .btn-settings,
+  .input-select,
+  input[type="text"],
+  input[type="date"],
+  input[type="time"],
+  input[type="number"],
+  textarea,
+  select {
+    min-height: 44px;
+  }
+
+  .nav-toggle {
+    display: flex;
+    top: calc(0.65rem + env(safe-area-inset-top, 0px));
+    left: calc(0.65rem + env(safe-area-inset-left, 0px));
+    z-index: 120;
+  }
+
+  .sidebar {
+    width: min(86vw, 320px);
+    max-width: min(86vw, 320px);
+    transform: translateX(-100%);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    padding:
+      calc(0.9rem + env(safe-area-inset-top, 0px))
+      0.85rem
+      calc(0.9rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    z-index: 110;
+  }
+
+  .modal {
+    padding:
+      calc(12px + env(safe-area-inset-top, 0px))
+      calc(12px + env(safe-area-inset-right, 0px))
+      calc(12px + env(safe-area-inset-bottom, 0px))
+      calc(12px + env(safe-area-inset-left, 0px));
+    align-items: flex-start;
+  }
+
+  .modal-card {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-card);
+    padding-right: 3.15rem;
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    z-index: 12;
+    min-width: 44px;
+    min-height: 44px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+  }
+
+  .modal-body,
+  form.modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 8;
+    background: var(--bg-card);
+    padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .settings-nav-btn {
+    min-height: 44px;
+    min-width: calc(50% - 0.25rem);
+  }
+
+  .settings-content-scroll {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .focus-timer-display {
+    font-size: clamp(2rem, 15vw, 2.8rem);
+  }
+
+  .focus-actions .btn {
+    flex: 1 1 calc(50% - 0.35rem);
+  }
+
+  .focus-break-row {
+    flex-wrap: wrap;
+  }
+
+  .group-code,
+  .group-code--large,
+  .input-text-mono,
+  #groupInviteLink,
+  #settingsGroupLink,
+  #groupModalSuccessLink {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .group-success-code-row {
+    align-items: stretch;
+  }
+
+  .cal-nav,
+  .cal-mode {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cal-title {
+    min-width: 0;
+    font-size: 1.1rem;
+  }
+
+  .cal-grid-head,
+  .cal-grid-body {
+    gap: 0.3rem;
+  }
+
+  .cal-cell {
+    min-height: 84px;
+    padding: 0.35rem;
+    border-radius: 14px;
+  }
+
+  .day-detail-card {
+    position: static;
+    top: auto;
+  }
+}

@@ -325,7 +325,14 @@ async function loadUserProfile() {
 
   function isCapacitorNativeRuntime() {
     try {
-      return Boolean(window.Capacitor && typeof window.Capacitor.isNativePlatform === "function" && window.Capacitor.isNativePlatform());
+      if (!window.Capacitor) return false;
+      if (typeof window.Capacitor.isNativePlatform === "function") {
+        return window.Capacitor.isNativePlatform();
+      }
+      if (typeof window.Capacitor.getPlatform === "function") {
+        return window.Capacitor.getPlatform() !== "web";
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -397,16 +404,24 @@ async function loadUserProfile() {
     }
   }
 
-  function bindNativeOAuthBridge() {
+  async function bindNativeOAuthBridge() {
     if (oauthNativeBridgeBound || !isCapacitorNativeRuntime()) return;
     oauthNativeBridgeBound = true;
     const AppPlugin = getCapacitorPlugin("App");
     if (AppPlugin && typeof AppPlugin.addListener === "function") {
-      AppPlugin.addListener("appUrlOpen", (event) => {
+      await AppPlugin.addListener("appUrlOpen", async (event) => {
         if (!event?.url) return;
         if (!event.url.startsWith(NATIVE_OAUTH_REDIRECT)) return;
-        void handleOAuthCallbackUrl(event.url);
+        await handleOAuthCallbackUrl(event.url);
       });
+    }
+    if (AppPlugin && typeof AppPlugin.getLaunchUrl === "function") {
+      try {
+        const launch = await AppPlugin.getLaunchUrl();
+        if (launch?.url && launch.url.startsWith(NATIVE_OAUTH_REDIRECT)) {
+          await handleOAuthCallbackUrl(launch.url);
+        }
+      } catch (_) {}
     }
   }
 
@@ -7510,7 +7525,7 @@ async function loadUserProfile() {
   // ——— Init & events ———
 
   async function init() {
-    bindNativeOAuthBridge();
+    await bindNativeOAuthBridge();
     if (isCapacitorNativeRuntime()) {
       void handleOAuthCallbackUrl(window.location.href);
     }

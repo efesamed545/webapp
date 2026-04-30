@@ -3333,20 +3333,43 @@ async function loadUserProfile() {
   async function persistFocusStateRunning() {
     const userId = await getCurrentUserId();
     if (!userId || !focusTimer.running) return;
-    const effectiveStartMs = focusTimer.endAtMs - focusTimer.durationSec * 1000;
     const durationMin = Math.max(1, Math.round(focusTimer.durationSec / 60));
+    const payload = {
+      user_id: userId,
+      task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
+      started_at: new Date(focusTimer.startedAtMs || Date.now()).toISOString(),
+      duration_minutes: durationMin,
+      remaining_seconds: Math.max(0, Math.round(focusTimer.remainingSec)),
+      is_running: true,
+      is_paused: false,
+      paused_at: null,
+      updated_at: new Date().toISOString(),
+    };
     try {
-      const { error } = await supabase.from("focus_state").upsert(
-        {
-          user_id: userId,
-          task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
-          started_at: new Date(effectiveStartMs).toISOString(),
-          duration_minutes: durationMin,
-          is_running: true,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
+      const { error } = await supabase.from("focus_state").upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function persistFocusStatePaused() {
+    const userId = await getCurrentUserId();
+    if (!userId || !focusTimer.running || !focusTimer.paused) return;
+    const payload = {
+      user_id: userId,
+      task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
+      started_at: new Date().toISOString(),
+      duration_minutes: Math.max(1, Math.round(focusTimer.remainingSec / 60)),
+      remaining_seconds: Math.max(0, Math.round(focusTimer.remainingSec)),
+      is_running: false,
+      is_paused: true,
+      paused_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    console.log("[focus] pause:", payload);
+    try {
+      const { error } = await supabase.from("focus_state").upsert(payload, { onConflict: "user_id" });
       if (error) throw error;
     } catch (e) {
       console.error(e);
@@ -5520,6 +5543,10 @@ async function loadUserProfile() {
     const pct = focusTimer.durationSec > 0 ? Math.min(100, Math.max(0, ((focusTimer.durationSec - focusTimer.remainingSec) / focusTimer.durationSec) * 100)) : 0;
     if (els.focusProgressFill) els.focusProgressFill.style.width = `${pct}%`;
     if (els.focusRouteProgress) els.focusRouteProgress.textContent = `${Math.round(pct)}%`;
+    if (els.btnFocusStart) els.btnFocusStart.hidden = focusTimer.running;
+    if (els.btnFocusPause) els.btnFocusPause.hidden = !focusTimer.running || focusTimer.paused;
+    if (els.btnFocusResume) els.btnFocusResume.hidden = !focusTimer.running || !focusTimer.paused;
+    if (els.btnFocusEnd) els.btnFocusEnd.hidden = !focusTimer.running;
   }
 
   function stopBreakTick() {
@@ -5613,6 +5640,7 @@ async function loadUserProfile() {
       endedAt,
       mode: focusTimer.mode,
     };
+    console.log("[focus] finish session:", session);
     if (completed) console.log("[focus] timer completed");
     const persisted = await insertFocusSessionToSupabase(session);
     if (!persisted) {
@@ -5669,29 +5697,55 @@ async function loadUserProfile() {
     try {
       const { data, error } = await supabase.from("focus_state").select("*").eq("user_id", userId).maybeSingle();
       if (error) throw error;
-      console.log("[focus] loaded focus_state:", data);
-      if (!data || !data.is_running) {
-        console.log("[focus] restored active timer:", false);
+      console.log("[focus] loaded state:", data);
+      if (!data) {
         return;
       }
+      const isPaused = Boolean(data.is_paused);
+      const isRunning = Boolean(data.is_running);
+      if (!isPaused && !isRunning) return;
       const durationSec = Math.max(60, (Number(data.duration_minutes) || 25) * 60);
+      const storedRemaining = Number(data.remaining_seconds);
+      const baseRemainingSec = Number.isFinite(storedRemaining) && storedRemaining > 0 ? storedRemaining : durationSec;
+      if (isPaused) {
+        focusTimer.durationSec = Math.max(60, baseRemainingSec);
+        focusTimer.remainingSec = Math.max(1, Math.round(baseRemainingSec));
+        focusTimer.startedAtMs = 0;
+        focusTimer.endAtMs = 0;
+        focusTimer.running = true;
+        focusTimer.paused = true;
+        focusTimer.preEndNotified = false;
+        focusTimer.activeSessionId = uid();
+        focusTimer.selectedTaskId = data.task_id ? String(data.task_id) : "";
+        const pausedTask = focusTaskForUi(focusTimer.selectedTaskId);
+        focusTimer.activeTaskTitle = pausedTask ? String(pausedTask.title || "") : "";
+        focusTimer.lastFocusStatePersistAt = Date.now();
+        stopFocusTick();
+        stopBreakTick();
+        focusTimer.breakRunning = false;
+        showBreakPanel(false);
+        document.body.classList.add("focus-session-active");
+        updateFocusTimerUi();
+        refreshFocusActiveTaskCard();
+        refreshFocusGuidance();
+        console.log("[focus] restored paused:", data);
+        return;
+      }
       const startMs = data.started_at ? new Date(data.started_at).getTime() : NaN;
       if (!Number.isFinite(startMs)) {
-        console.log("[focus] restored active timer:", false);
         await clearFocusStateInSupabase();
         return;
       }
-      const endMs = startMs + durationSec * 1000;
-      const remainingSec = Math.max(0, Math.round((endMs - Date.now()) / 1000));
+      const elapsedSec = Math.max(0, Math.round((Date.now() - startMs) / 1000));
+      const remainingSec = Math.max(0, Math.round(baseRemainingSec - elapsedSec));
       if (remainingSec <= 0) {
-        console.log("[focus] restored active timer:", false);
         await completeExpiredFocusSessionFromRow(data);
         return;
       }
-      focusTimer.durationSec = durationSec;
+      focusTimer.durationSec = Math.max(durationSec, baseRemainingSec);
       focusTimer.remainingSec = remainingSec;
       focusTimer.startedAtMs = startMs;
-      focusTimer.endAtMs = endMs;
+      focusTimer.endAtMs = Date.now() + remainingSec * 1000;
       focusTimer.running = true;
       focusTimer.paused = false;
       focusTimer.preEndNotified = remainingSec <= 60;
@@ -5710,14 +5764,14 @@ async function loadUserProfile() {
       refreshFocusActiveTaskCard();
       refreshFocusGuidance();
       void persistFocusStateRunning();
-      console.log("[focus] restored active timer:", true);
+      console.log("[focus] restored running:", data);
     } catch (e) {
       console.error(e);
     }
   }
 
   function startFocusSession() {
-    if (focusTimer.running && !focusTimer.paused) return;
+    if (focusTimer.running) return;
     const tk = getFocusTaskById(focusTimer.selectedTaskId);
     if (!tk) {
       showToast(t("focus.needTask"));
@@ -5735,6 +5789,15 @@ async function loadUserProfile() {
     focusTimer.activeTaskTitle = tk.title || "";
     focusTimer.distractionSelections = $$(".focus-distraction:checked").map((x) => x.value);
     focusTimer.lastFocusStatePersistAt = Date.now();
+    const startPayload = {
+      task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
+      started_at: new Date(focusTimer.startedAtMs).toISOString(),
+      duration_minutes: customMin,
+      remaining_seconds: focusTimer.remainingSec,
+      is_running: true,
+      is_paused: false,
+    };
+    console.log("[focus] start:", startPayload);
     stopFocusTick();
     document.body.classList.add("focus-session-active");
     updateFocusTimerUi();
@@ -5747,20 +5810,45 @@ async function loadUserProfile() {
     if (!focusTimer.running || focusTimer.paused) return;
     focusTimer.paused = true;
     focusTimer.remainingSec = Math.max(0, Math.round((focusTimer.endAtMs - Date.now()) / 1000));
+    stopFocusTick();
     updateFocusTimerUi();
+    void persistFocusStatePaused();
   }
 
   function resumeFocusSession() {
     if (!focusTimer.running || !focusTimer.paused) return;
     focusTimer.paused = false;
-    focusTimer.endAtMs = Date.now() + focusTimer.remainingSec * 1000;
+    focusTimer.startedAtMs = Date.now();
+    focusTimer.endAtMs = focusTimer.startedAtMs + focusTimer.remainingSec * 1000;
     focusTimer.lastFocusStatePersistAt = Date.now();
+    const resumePayload = {
+      task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
+      started_at: new Date(focusTimer.startedAtMs).toISOString(),
+      remaining_seconds: focusTimer.remainingSec,
+      is_running: true,
+      is_paused: false,
+    };
+    console.log("[focus] resume:", resumePayload);
     updateFocusTimerUi();
     void persistFocusStateRunning();
+    scheduleFocusTick();
   }
 
   function endFocusSessionEarly() {
-    void finishFocusSession(false);
+    stopFocusTick();
+    stopBreakTick();
+    focusTimer.breakRunning = false;
+    showBreakPanel(false);
+    focusTimer.running = false;
+    focusTimer.paused = false;
+    focusTimer.activeSessionId = "";
+    focusTimer.preEndNotified = false;
+    focusTimer.remainingSec = focusTimer.durationSec;
+    focusTimer.lastFocusStatePersistAt = 0;
+    document.body.classList.remove("focus-session-active");
+    updateFocusTimerUi();
+    refreshFocusGuidance();
+    void clearFocusStateInSupabase();
   }
 
   async function toggleFocusFullscreen() {

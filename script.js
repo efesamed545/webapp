@@ -7218,17 +7218,27 @@ async function loadUserProfile() {
     } catch (_) {}
   }
 
+  function refreshAuthVisibleBodyClass() {
+    try {
+      const gate = document.getElementById("authGate");
+      if (gate && !gate.hidden) document.body.classList.add("auth-visible");
+      else document.body.classList.remove("auth-visible");
+    } catch (_) {}
+  }
+
   function showAuthScreen() {
     dismissAppSplashForInteraction();
     if (els.authGate) els.authGate.hidden = false;
     if (els.app) els.app.hidden = true;
     document.body.style.overflow = "";
     showAuthPanel("welcome");
+    refreshAuthVisibleBodyClass();
   }
 
   function hideAuthScreen() {
     if (els.authGate) els.authGate.hidden = true;
     if (els.app) els.app.hidden = false;
+    refreshAuthVisibleBodyClass();
   }
 
   function setAuthError(el, msg) {
@@ -7492,14 +7502,36 @@ async function loadUserProfile() {
     hideModal(els.legalModal, els.legalModalBackdrop);
   }
 
+  function bindAuthTapDebugOnce() {
+    if (window.__flowAuthTapDebugBound) return;
+    window.__flowAuthTapDebugBound = true;
+    document.addEventListener(
+      "click",
+      function (e) {
+        const authVisible =
+          document.body.classList.contains("auth-visible") ||
+          (document.getElementById("authGate") && !document.getElementById("authGate").hidden);
+        if (!authVisible) return;
+        console.log("[auth] click target:", e.target);
+      },
+      true
+    );
+  }
+
   function initAuthAndCookieListeners() {
+    console.log("[auth] binding auth button handlers");
+    bindAuthTapDebugOnce();
+
     els.authBtnGoogle?.addEventListener("click", () => {
       console.log("[auth] google clicked");
       void handleGoogleClick();
     });
-    els.authBtnApple?.addEventListener("click", handleAppleClick);
+    els.authBtnApple?.addEventListener("click", () => {
+      console.log("[auth] apple clicked");
+      handleAppleClick();
+    });
     els.authBtnShowEmailLogin?.addEventListener("click", () => {
-      console.log("[auth] email clicked");
+      console.log("[auth] email sign in clicked");
       applyDomI18n();
       showAuthPanel("login");
       setAuthError(els.authLoginError, "");
@@ -7560,6 +7592,7 @@ async function loadUserProfile() {
   // ——— Init & events ———
 
   async function init() {
+    dismissAppSplashForInteraction();
     await bindNativeOAuthBridge();
     if (isCapacitorNativeRuntime()) {
       void handleOAuthCallbackUrl(window.location.href);

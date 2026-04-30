@@ -1492,7 +1492,8 @@ html[dir="rtl"] .nav-toggle {
 .auth-gate {
   position: fixed;
   inset: 0;
-  z-index: 125;
+  /* Above in-app shell layers; legal/cookie modals override higher when open. */
+  z-index: 5000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1512,19 +1513,34 @@ html[dir="rtl"] .nav-toggle {
 .auth-gate:not([hidden]) .btn-oauth,
 .auth-gate:not([hidden]) .btn-link,
 .auth-gate:not([hidden]) .btn-ghost,
-.auth-gate:not([hidden]) button[type="submit"] {
+.auth-gate:not([hidden]) button[type="submit"],
+.auth-gate:not([hidden]) .auth-form input,
+.auth-gate:not([hidden]) .auth-form textarea,
+.auth-gate:not([hidden]) .auth-form select {
   pointer-events: auto;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.auth-gate:not([hidden]) .auth-form input,
+.auth-gate:not([hidden]) .auth-form textarea,
+.auth-gate:not([hidden]) .auth-form select {
+  cursor: text;
 }
 
 .auth-gate-inner {
   width: 100%;
   max-width: 420px;
+  position: relative;
+  z-index: 1;
 }
 
 .auth-card {
   padding: 1.75rem 1.5rem;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
 
 .auth-brand {
@@ -1690,6 +1706,7 @@ html[dir="rtl"] .nav-toggle {
 
 .app[hidden] {
   display: none !important;
+  pointer-events: none !important;
 }
 
 /* Account in settings */
@@ -2080,6 +2097,17 @@ html[dir="rtl"] .welcome-card-body {
 #cookieSettingsBackdrop,
 #legalModalBackdrop {
   z-index: 101;
+}
+
+/* Above .auth-gate (5000): Terms/Privacy & cookie settings from login must receive taps. */
+#legalModalBackdrop:not([hidden]),
+#cookieSettingsBackdrop:not([hidden]) {
+  z-index: 12000 !important;
+}
+
+#legalModal.modal--legal:not([hidden]),
+#cookieSettingsModal.modal--cookie:not([hidden]) {
+  z-index: 12001 !important;
 }
 
 .modal-card--legal {
@@ -4610,7 +4638,7 @@ body.focus-session-active .coach-banner {
   .app-splash {
     position: fixed;
     inset: 0;
-    /* Below .auth-gate (125): full-screen splash must not sit above login or taps stay on an “invisible” layer on iOS. */
+    /* Below .auth-gate: full-screen splash must not intercept taps on login (iOS / Capacitor). */
     z-index: 50;
     display: flex;
     align-items: center;
@@ -5265,6 +5293,8 @@ body.focus-session-active .coach-banner {
     max-height: calc(100dvh - 24px);
     overflow-y: auto;
     overflow-x: hidden;
+    z-index: 5000 !important;
+    pointer-events: auto !important;
     padding:
       calc(env(safe-area-inset-top, 0px) + 12px)
       calc(env(safe-area-inset-right, 0px) + 12px)
@@ -5452,6 +5482,8 @@ body.focus-session-active .coach-banner {
   .auth-gate {
     width: 100% !important;
     max-width: 100% !important;
+    z-index: 5000 !important;
+    pointer-events: auto !important;
     padding-left: max(12px, env(safe-area-inset-left, 0px)) !important;
     padding-right: max(12px, env(safe-area-inset-right, 0px)) !important;
     padding-top: calc(env(safe-area-inset-top, 0px) + 12px) !important;

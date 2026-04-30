@@ -319,6 +319,126 @@ async function loadUserProfile() {
     appleClientId: "YOUR_APPLE_SERVICE_ID",
     appleRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
   };
+  const NATIVE_OAUTH_REDIRECT = "com.flow.app://auth/callback";
+  const WEB_OAUTH_REDIRECT = "https://webapp-weld-xi.vercel.app";
+  let oauthNativeBridgeBound = false;
+
+  function isCapacitorNativeRuntime() {
+    try {
+      if (!window.Capacitor) return false;
+      if (typeof window.Capacitor.isNativePlatform === "function") {
+        return window.Capacitor.isNativePlatform();
+      }
+      if (typeof window.Capacitor.getPlatform === "function") {
+        return window.Capacitor.getPlatform() !== "web";
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function getOAuthRedirectUrl() {
+    if (isCapacitorNativeRuntime()) return NATIVE_OAUTH_REDIRECT;
+    return WEB_OAUTH_REDIRECT;
+  }
+
+  function getCapacitorPlugin(name) {
+    try {
+      return window.Capacitor?.Plugins?.[name] || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function completeOAuthLoginFromSupabaseSession() {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data?.session?.user) return false;
+      const u = data.session.user;
+      const meta = u.user_metadata || {};
+      const name = meta.full_name || meta.name || String(u.email || "").split("@")[0] || "You";
+      const provider = (u.app_metadata && u.app_metadata.provider) || "oauth";
+      await loginUserSuccess({ id: u.id, email: u.email || "", name }, provider);
+      return true;
+    } catch (e) {
+      console.error("completeOAuthLoginFromSupabaseSession:", e);
+      return false;
+    }
+  }
+
+  async function handleOAuthCallbackUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== "string") return false;
+    try {
+      const parsed = new URL(rawUrl);
+      const hash = parsed.hash ? parsed.hash.replace(/^#/, "") : "";
+      const hashParams = new URLSearchParams(hash);
+      const queryParams = parsed.searchParams;
+      const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
+      const code = queryParams.get("code");
+      const hasError = hashParams.get("error_description") || queryParams.get("error_description") || queryParams.get("error");
+      if (hasError) {
+        console.error("OAuth callback error:", hasError);
+        return false;
+      }
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) throw error;
+      } else if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) throw error;
+      } else {
+        return false;
+      }
+      const Browser = getCapacitorPlugin("Browser");
+      if (Browser && typeof Browser.close === "function") {
+        try {
+          await Browser.close();
+        } catch (_) {}
+      }
+      return await completeOAuthLoginFromSupabaseSession();
+    } catch (e) {
+      console.error("handleOAuthCallbackUrl:", e);
+      return false;
+    }
+  }
+
+  async function bindNativeOAuthBridge() {
+    if (oauthNativeBridgeBound || !isCapacitorNativeRuntime()) return;
+    oauthNativeBridgeBound = true;
+    const AppPlugin = getCapacitorPlugin("App");
+    if (AppPlugin && typeof AppPlugin.addListener === "function") {
+      await AppPlugin.addListener("appUrlOpen", async (event) => {
+        console.log("[oauth] appUrlOpen:", event?.url);
+        if (!event?.url || !event.url.includes("auth/callback")) return;
+        try {
+          await handleOAuthCallbackUrl(event.url);
+          const { data } = await supabase.auth.getSession();
+          console.log("[oauth] session after callback:", data?.session);
+          console.log("[oauth] callback handled successfully");
+        } catch (error) {
+          console.error("[oauth] callback handling failed:", error);
+        }
+      });
+    }
+    if (AppPlugin && typeof AppPlugin.getLaunchUrl === "function") {
+      try {
+        const launch = await AppPlugin.getLaunchUrl();
+        console.log("[oauth] getLaunchUrl:", launch?.url);
+        if (launch?.url && launch.url.includes("auth/callback")) {
+          try {
+            await handleOAuthCallbackUrl(launch.url);
+            const { data } = await supabase.auth.getSession();
+            console.log("[oauth] session after callback:", data?.session);
+            console.log("[oauth] callback handled successfully");
+          } catch (error) {
+            console.error("[oauth] callback handling failed:", error);
+          }
+        }
+      } catch (_) {}
+    }
+  }
 
   /**
    * Preset avatars: 48×48 inline SVG, soft modern illustrations (neutral, inclusive).
@@ -2571,10 +2691,6 @@ async function loadUserProfile() {
     breakTickId: 0,
     lastFocusStatePersistAt: 0,
   };
-  const focusStateDbSupport = {
-    checked: false,
-    hasPauseColumns: true,
-  };
 
 
   const DEFAULT_APP_PREFS = {
@@ -3334,25 +3450,14 @@ async function loadUserProfile() {
     }
   }
 
-  function isMissingColumnError(err) {
-    const msg = String(err?.message || err || "").toLowerCase();
-    return msg.includes("column") && (msg.includes("does not exist") || msg.includes("unknown"));
-  }
-
-  async function upsertFocusStatePayload(payload) {
-    const { error } = await supabase.from("focus_state").upsert(payload, { onConflict: "user_id" });
-    if (error) throw error;
-  }
-
   async function persistFocusStateRunning() {
     const userId = await getCurrentUserId();
     if (!userId || !focusTimer.running) return;
-    const startedAtMs = focusTimer.startedAtMs || Date.now();
-    const durationMin = Math.max(1, Math.round(focusTimer.remainingSec / 60));
+    const durationMin = Math.max(1, Math.round(focusTimer.durationSec / 60));
     const payload = {
       user_id: userId,
       task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
-      started_at: new Date(startedAtMs).toISOString(),
+      started_at: new Date(focusTimer.startedAtMs || Date.now()).toISOString(),
       duration_minutes: durationMin,
       remaining_seconds: Math.max(0, Math.round(focusTimer.remainingSec)),
       is_running: true,
@@ -3361,31 +3466,9 @@ async function loadUserProfile() {
       updated_at: new Date().toISOString(),
     };
     try {
-      if (focusStateDbSupport.hasPauseColumns) {
-        await upsertFocusStatePayload(payload);
-      } else {
-        await upsertFocusStatePayload({
-          user_id: payload.user_id,
-          task_id: payload.task_id,
-          started_at: payload.started_at,
-          duration_minutes: payload.duration_minutes,
-          is_running: payload.is_running,
-          updated_at: payload.updated_at,
-        });
-      }
+      const { error } = await supabase.from("focus_state").upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
     } catch (e) {
-      if (focusStateDbSupport.hasPauseColumns && isMissingColumnError(e)) {
-        focusStateDbSupport.hasPauseColumns = false;
-        await upsertFocusStatePayload({
-          user_id: payload.user_id,
-          task_id: payload.task_id,
-          started_at: payload.started_at,
-          duration_minutes: payload.duration_minutes,
-          is_running: payload.is_running,
-          updated_at: payload.updated_at,
-        });
-        return;
-      }
       console.error(e);
     }
   }
@@ -3396,7 +3479,7 @@ async function loadUserProfile() {
     const payload = {
       user_id: userId,
       task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
-      started_at: new Date(Date.now()).toISOString(),
+      started_at: new Date().toISOString(),
       duration_minutes: Math.max(1, Math.round(focusTimer.remainingSec / 60)),
       remaining_seconds: Math.max(0, Math.round(focusTimer.remainingSec)),
       is_running: false,
@@ -3404,33 +3487,11 @@ async function loadUserProfile() {
       paused_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+    console.log("[focus] pause:", payload);
     try {
-      console.log("[focus] saved paused state:", payload);
-      if (focusStateDbSupport.hasPauseColumns) {
-        await upsertFocusStatePayload(payload);
-      } else {
-        await upsertFocusStatePayload({
-          user_id: payload.user_id,
-          task_id: payload.task_id,
-          started_at: payload.started_at,
-          duration_minutes: payload.duration_minutes,
-          is_running: payload.is_running,
-          updated_at: payload.updated_at,
-        });
-      }
+      const { error } = await supabase.from("focus_state").upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
     } catch (e) {
-      if (focusStateDbSupport.hasPauseColumns && isMissingColumnError(e)) {
-        focusStateDbSupport.hasPauseColumns = false;
-        await upsertFocusStatePayload({
-          user_id: payload.user_id,
-          task_id: payload.task_id,
-          started_at: payload.started_at,
-          duration_minutes: payload.duration_minutes,
-          is_running: payload.is_running,
-          updated_at: payload.updated_at,
-        });
-        return;
-      }
       console.error(e);
     }
   }
@@ -5699,6 +5760,7 @@ async function loadUserProfile() {
       endedAt,
       mode: focusTimer.mode,
     };
+    console.log("[focus] finish session:", session);
     if (completed) console.log("[focus] timer completed");
     const persisted = await insertFocusSessionToSupabase(session);
     if (!persisted) {
@@ -5755,25 +5817,21 @@ async function loadUserProfile() {
     try {
       const { data, error } = await supabase.from("focus_state").select("*").eq("user_id", userId).maybeSingle();
       if (error) throw error;
-      console.log("[focus] loaded focus_state:", data);
+      console.log("[focus] loaded state:", data);
       if (!data) {
         return;
-      }
-      if (!focusStateDbSupport.checked) {
-        focusStateDbSupport.checked = true;
-        focusStateDbSupport.hasPauseColumns = "is_paused" in data || "remaining_seconds" in data || "paused_at" in data;
       }
       const isPaused = Boolean(data.is_paused);
       const isRunning = Boolean(data.is_running);
       if (!isPaused && !isRunning) return;
-      const baseDurationSec = Math.max(60, (Number(data.duration_minutes) || 25) * 60);
-      const explicitRemaining = Number(data.remaining_seconds);
-      const baseRemainingSec = Number.isFinite(explicitRemaining) && explicitRemaining > 0 ? explicitRemaining : baseDurationSec;
+      const durationSec = Math.max(60, (Number(data.duration_minutes) || 25) * 60);
+      const storedRemaining = Number(data.remaining_seconds);
+      const baseRemainingSec = Number.isFinite(storedRemaining) && storedRemaining > 0 ? storedRemaining : durationSec;
       if (isPaused) {
         focusTimer.durationSec = Math.max(60, baseRemainingSec);
-        focusTimer.remainingSec = Math.max(0, Math.round(baseRemainingSec));
+        focusTimer.remainingSec = Math.max(1, Math.round(baseRemainingSec));
         focusTimer.startedAtMs = 0;
-        focusTimer.endAtMs = Date.now() + focusTimer.remainingSec * 1000;
+        focusTimer.endAtMs = 0;
         focusTimer.running = true;
         focusTimer.paused = true;
         focusTimer.preEndNotified = false;
@@ -5790,7 +5848,7 @@ async function loadUserProfile() {
         updateFocusTimerUi();
         refreshFocusActiveTaskCard();
         refreshFocusGuidance();
-        console.log("[focus] restored paused state:", data);
+        console.log("[focus] restored paused:", data);
         return;
       }
       const startMs = data.started_at ? new Date(data.started_at).getTime() : NaN;
@@ -5804,7 +5862,7 @@ async function loadUserProfile() {
         await completeExpiredFocusSessionFromRow(data);
         return;
       }
-      focusTimer.durationSec = Math.max(60, baseRemainingSec);
+      focusTimer.durationSec = Math.max(durationSec, baseRemainingSec);
       focusTimer.remainingSec = remainingSec;
       focusTimer.startedAtMs = startMs;
       focusTimer.endAtMs = Date.now() + remainingSec * 1000;
@@ -5826,7 +5884,7 @@ async function loadUserProfile() {
       refreshFocusActiveTaskCard();
       refreshFocusGuidance();
       void persistFocusStateRunning();
-      console.log("[focus] restored running state:", data);
+      console.log("[focus] restored running:", data);
     } catch (e) {
       console.error(e);
     }
@@ -5851,6 +5909,15 @@ async function loadUserProfile() {
     focusTimer.activeTaskTitle = tk.title || "";
     focusTimer.distractionSelections = $$(".focus-distraction:checked").map((x) => x.value);
     focusTimer.lastFocusStatePersistAt = Date.now();
+    const startPayload = {
+      task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
+      started_at: new Date(focusTimer.startedAtMs).toISOString(),
+      duration_minutes: customMin,
+      remaining_seconds: focusTimer.remainingSec,
+      is_running: true,
+      is_paused: false,
+    };
+    console.log("[focus] start:", startPayload);
     stopFocusTick();
     document.body.classList.add("focus-session-active");
     updateFocusTimerUi();
@@ -5861,7 +5928,6 @@ async function loadUserProfile() {
 
   function pauseFocusSession() {
     if (!focusTimer.running || focusTimer.paused) return;
-    console.log("[focus] pause");
     focusTimer.paused = true;
     focusTimer.remainingSec = Math.max(0, Math.round((focusTimer.endAtMs - Date.now()) / 1000));
     stopFocusTick();
@@ -5871,11 +5937,18 @@ async function loadUserProfile() {
 
   function resumeFocusSession() {
     if (!focusTimer.running || !focusTimer.paused) return;
-    console.log("[focus] resume");
     focusTimer.paused = false;
     focusTimer.startedAtMs = Date.now();
     focusTimer.endAtMs = focusTimer.startedAtMs + focusTimer.remainingSec * 1000;
     focusTimer.lastFocusStatePersistAt = Date.now();
+    const resumePayload = {
+      task_id: focusTimer.selectedTaskId ? focusTimer.selectedTaskId : null,
+      started_at: new Date(focusTimer.startedAtMs).toISOString(),
+      remaining_seconds: focusTimer.remainingSec,
+      is_running: true,
+      is_paused: false,
+    };
+    console.log("[focus] resume:", resumePayload);
     updateFocusTimerUi();
     void persistFocusStateRunning();
     scheduleFocusTick();
@@ -7145,17 +7218,27 @@ async function loadUserProfile() {
     } catch (_) {}
   }
 
+  function refreshAuthVisibleBodyClass() {
+    try {
+      const gate = document.getElementById("authGate");
+      if (gate && !gate.hidden) document.body.classList.add("auth-visible");
+      else document.body.classList.remove("auth-visible");
+    } catch (_) {}
+  }
+
   function showAuthScreen() {
     dismissAppSplashForInteraction();
     if (els.authGate) els.authGate.hidden = false;
     if (els.app) els.app.hidden = true;
     document.body.style.overflow = "";
     showAuthPanel("welcome");
+    refreshAuthVisibleBodyClass();
   }
 
   function hideAuthScreen() {
     if (els.authGate) els.authGate.hidden = true;
     if (els.app) els.app.hidden = false;
+    refreshAuthVisibleBodyClass();
   }
 
   function setAuthError(el, msg) {
@@ -7292,10 +7375,37 @@ async function loadUserProfile() {
   }
 
   async function handleGoogleClick() {
-    const { data, error } = await supabase.auth.({
+    const redirectTo = getOAuthRedirectUrl();
+    if (isCapacitorNativeRuntime()) {
+      console.log("[oauth] native redirect url:", redirectTo);
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) {
+        alert("Google Login Fehler: " + error.message);
+        return;
+      }
+      const authUrl = data?.url;
+      if (!authUrl) {
+        alert("Google Login Fehler: OAuth URL fehlt.");
+        return;
+      }
+      const Browser = getCapacitorPlugin("Browser");
+      if (Browser && typeof Browser.open === "function") {
+        await Browser.open({ url: authUrl });
+      } else {
+        window.location.href = authUrl;
+      }
+      return;
+    }
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin + window.location.pathname
+        redirectTo
       }
     });
   
@@ -7392,14 +7502,36 @@ async function loadUserProfile() {
     hideModal(els.legalModal, els.legalModalBackdrop);
   }
 
+  function bindAuthTapDebugOnce() {
+    if (window.__flowAuthTapDebugBound) return;
+    window.__flowAuthTapDebugBound = true;
+    document.addEventListener(
+      "click",
+      function (e) {
+        const authVisible =
+          document.body.classList.contains("auth-visible") ||
+          (document.getElementById("authGate") && !document.getElementById("authGate").hidden);
+        if (!authVisible) return;
+        console.log("[auth] click target:", e.target);
+      },
+      true
+    );
+  }
+
   function initAuthAndCookieListeners() {
+    console.log("[auth] binding auth button handlers");
+    bindAuthTapDebugOnce();
+
     els.authBtnGoogle?.addEventListener("click", () => {
       console.log("[auth] google clicked");
       void handleGoogleClick();
     });
-    els.authBtnApple?.addEventListener("click", handleAppleClick);
+    els.authBtnApple?.addEventListener("click", () => {
+      console.log("[auth] apple clicked");
+      handleAppleClick();
+    });
     els.authBtnShowEmailLogin?.addEventListener("click", () => {
-      console.log("[auth] email clicked");
+      console.log("[auth] email sign in clicked");
       applyDomI18n();
       showAuthPanel("login");
       setAuthError(els.authLoginError, "");
@@ -7460,15 +7592,13 @@ async function loadUserProfile() {
   // ——— Init & events ———
 
   async function init() {
+    dismissAppSplashForInteraction();
+    await bindNativeOAuthBridge();
+    if (isCapacitorNativeRuntime()) {
+      void handleOAuthCallbackUrl(window.location.href);
+    }
     calAnchor = startOfDay(new Date());
     selectedDateStr = formatYMD(new Date());
-    document.addEventListener(
-      "click",
-      (e) => {
-        console.log("[click target]", e.target);
-      },
-      true
-    );
     loadAppPrefs();
     initLanguage();
     initAuthAndCookieListeners();
@@ -7819,33 +7949,40 @@ async function loadUserProfile() {
     updateAccountSettingsLabel();
     bindWelcomeModalEvents();
 
+    const closeMobileSidebar = () => {
+      els.sidebar.classList.remove("open");
+      els.sidebarBackdrop.hidden = true;
+      document.body.classList.remove("sidebar-open");
+      els.navToggle.setAttribute("aria-expanded", "false");
+    };
+
+    const setMobileSidebarState = (open) => {
+      els.sidebar.classList.toggle("open", Boolean(open));
+      els.sidebarBackdrop.hidden = !open;
+      document.body.classList.toggle("sidebar-open", Boolean(open));
+      els.navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+
     els.navItems.forEach((btn) => {
       btn.addEventListener("click", () => {
         setView(btn.dataset.view);
-        els.sidebar.classList.remove("open");
-        els.sidebarBackdrop.hidden = true;
-        els.navToggle.setAttribute("aria-expanded", "false");
+        closeMobileSidebar();
       });
     });
 
     els.navToggle.addEventListener("click", () => {
-      const open = els.sidebar.classList.toggle("open");
-      els.navToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      els.sidebarBackdrop.hidden = !open;
+      const open = !els.sidebar.classList.contains("open");
+      setMobileSidebarState(open);
     });
 
     els.sidebarBackdrop.addEventListener("click", () => {
-      els.sidebar.classList.remove("open");
-      els.sidebarBackdrop.hidden = true;
-      els.navToggle.setAttribute("aria-expanded", "false");
+      closeMobileSidebar();
     });
 
     document.addEventListener("click", (e) => {
       if (e.target.closest(".sidebar") || e.target.closest(".nav-toggle")) return;
       if (window.innerWidth <= 768) {
-        els.sidebar.classList.remove("open");
-        els.sidebarBackdrop.hidden = true;
-        els.navToggle.setAttribute("aria-expanded", "false");
+        closeMobileSidebar();
       }
     });
 

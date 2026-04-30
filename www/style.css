@@ -4782,6 +4782,23 @@ body.focus-session-active .coach-banner {
     box-sizing: border-box;
   }
 
+  #viewAchievements,
+  .view-achievements {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    transform: none !important;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .achievements-layout {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    transform: none !important;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
   .achievements-grid,
   .ach-filter-grid {
     grid-template-columns: 1fr !important;
@@ -4793,6 +4810,21 @@ body.focus-session-active .coach-banner {
   .ach-card > * {
     min-width: 0;
     max-width: 100%;
+  }
+
+  .achievements-head-card,
+  .achievements-controls-card,
+  .ach-card {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .ach-card {
+    overflow: visible;
   }
 
   .achievements-summary,
@@ -4815,6 +4847,14 @@ body.focus-session-active .coach-banner {
     overflow-wrap: anywhere;
     word-break: normal;
     max-width: 100%;
+  }
+
+  .ach-filter-grid .field,
+  #achFilterStatus,
+  #achFilterCategory {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .ach-progress-track {

@@ -4734,9 +4734,41 @@ body.focus-session-active .coach-banner {
     box-sizing: border-box;
   }
 
+  #viewFocus,
+  .view-focus {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    transform: none !important;
+    padding-left: 16px;
+    padding-right: 16px;
+    overflow-x: hidden;
+  }
+
+  .focus-layout {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    transform: none !important;
+    width: 100%;
+    max-width: 100%;
+    gap: 0.6rem;
+    padding: 0;
+  }
+
   .focus-layout,
   .focus-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .focus-card,
+  .focus-card--main,
+  .focus-card--side,
+  .focus-active-task,
+  .focus-timer-block,
+  .focus-break {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
   }
 
   .focus-layout > *,
@@ -4751,7 +4783,26 @@ body.focus-session-active .coach-banner {
   .focus-presets .btn,
   .focus-actions .btn {
     min-width: 0;
-    flex: 1 1 calc(50% - 0.35rem);
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .focus-actions,
+  .focus-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  #focusTaskSelect,
+  #focusCustomMinutes,
+  .focus-grid .field,
+  .focus-grid .field select,
+  .focus-grid .field input {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   #focusTaskTitle,
@@ -4764,6 +4815,23 @@ body.focus-session-active .coach-banner {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: normal;
+  }
+
+  .focus-timer-display {
+    font-size: clamp(1.7rem, 12vw, 2.35rem);
+    line-height: 1;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  .focus-card,
+  .focus-actions .btn,
+  .focus-presets .btn,
+  .focus-grid .field,
+  .focus-session-item {
+    pointer-events: auto;
   }
 
   /* Achievements mobile: prevent clipped labels/badges */

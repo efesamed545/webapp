@@ -410,16 +410,31 @@ async function loadUserProfile() {
     const AppPlugin = getCapacitorPlugin("App");
     if (AppPlugin && typeof AppPlugin.addListener === "function") {
       await AppPlugin.addListener("appUrlOpen", async (event) => {
-        if (!event?.url) return;
-        if (!event.url.startsWith(NATIVE_OAUTH_REDIRECT)) return;
-        await handleOAuthCallbackUrl(event.url);
+        console.log("[oauth] appUrlOpen:", event?.url);
+        if (!event?.url || !event.url.includes("auth/callback")) return;
+        try {
+          await handleOAuthCallbackUrl(event.url);
+          const { data } = await supabase.auth.getSession();
+          console.log("[oauth] session after callback:", data?.session);
+          console.log("[oauth] callback handled successfully");
+        } catch (error) {
+          console.error("[oauth] callback handling failed:", error);
+        }
       });
     }
     if (AppPlugin && typeof AppPlugin.getLaunchUrl === "function") {
       try {
         const launch = await AppPlugin.getLaunchUrl();
-        if (launch?.url && launch.url.startsWith(NATIVE_OAUTH_REDIRECT)) {
-          await handleOAuthCallbackUrl(launch.url);
+        console.log("[oauth] getLaunchUrl:", launch?.url);
+        if (launch?.url && launch.url.includes("auth/callback")) {
+          try {
+            await handleOAuthCallbackUrl(launch.url);
+            const { data } = await supabase.auth.getSession();
+            console.log("[oauth] session after callback:", data?.session);
+            console.log("[oauth] callback handled successfully");
+          } catch (error) {
+            console.error("[oauth] callback handling failed:", error);
+          }
         }
       } catch (_) {}
     }
@@ -7338,6 +7353,7 @@ async function loadUserProfile() {
   async function handleGoogleClick() {
     const redirectTo = getOAuthRedirectUrl();
     if (isCapacitorNativeRuntime()) {
+      console.log("[oauth] native redirect url:", redirectTo);
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {

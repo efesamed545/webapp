@@ -7278,7 +7278,7 @@ async function loadUserProfile() {
   }
 
   async function handleGoogleClick() {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.({
       provider: "google",
       options: {
         redirectTo: window.location.origin + window.location.pathname

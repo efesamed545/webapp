@@ -1499,10 +1499,23 @@ html[dir="rtl"] .nav-toggle {
   padding: 1.25rem;
   background: var(--bg-app);
   overflow-y: auto;
+  pointer-events: auto;
+  isolation: isolate;
 }
 
 .auth-gate[hidden] {
   display: none !important;
+  pointer-events: none !important;
+}
+
+.auth-gate:not([hidden]) .btn,
+.auth-gate:not([hidden]) .btn-oauth,
+.auth-gate:not([hidden]) .btn-link,
+.auth-gate:not([hidden]) .btn-ghost,
+.auth-gate:not([hidden]) button[type="submit"] {
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .auth-gate-inner {
@@ -4597,7 +4610,8 @@ body.focus-session-active .coach-banner {
   .app-splash {
     position: fixed;
     inset: 0;
-    z-index: 2147483646;
+    /* Below .auth-gate (125): full-screen splash must not sit above login or taps stay on an “invisible” layer on iOS. */
+    z-index: 50;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -4615,7 +4629,8 @@ body.focus-session-active .coach-banner {
   .app-splash--hide {
     opacity: 0;
     visibility: hidden;
-    pointer-events: none;
+    pointer-events: none !important;
+    display: none !important;
   }
 
   .app-splash-inner {

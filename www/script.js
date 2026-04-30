@@ -7132,7 +7132,21 @@ async function loadUserProfile() {
     if (els.authPanelRegister) els.authPanelRegister.hidden = mode !== "register";
   }
 
+  function dismissAppSplashForInteraction() {
+    const el = document.getElementById("appSplash");
+    if (!el) return;
+    el.classList.add("app-splash--hide");
+    try {
+      el.style.setProperty("pointer-events", "none");
+      el.style.setProperty("display", "none");
+    } catch (_) {}
+    try {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    } catch (_) {}
+  }
+
   function showAuthScreen() {
+    dismissAppSplashForInteraction();
     if (els.authGate) els.authGate.hidden = false;
     if (els.app) els.app.hidden = true;
     document.body.style.overflow = "";
@@ -7379,15 +7393,20 @@ async function loadUserProfile() {
   }
 
   function initAuthAndCookieListeners() {
-    els.authBtnGoogle?.addEventListener("click", handleGoogleClick);
+    els.authBtnGoogle?.addEventListener("click", () => {
+      console.log("[auth] google clicked");
+      void handleGoogleClick();
+    });
     els.authBtnApple?.addEventListener("click", handleAppleClick);
     els.authBtnShowEmailLogin?.addEventListener("click", () => {
+      console.log("[auth] email clicked");
       applyDomI18n();
       showAuthPanel("login");
       setAuthError(els.authLoginError, "");
       setTimeout(() => els.authLoginEmail?.focus(), 50);
     });
     els.authBtnShowRegister?.addEventListener("click", () => {
+      console.log("[auth] create account clicked");
       applyDomI18n();
       showAuthPanel("register");
       setAuthError(els.authRegisterError, "");

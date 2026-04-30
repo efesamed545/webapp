@@ -5073,4 +5073,96 @@ body.focus-session-active .coach-banner {
     position: static;
     top: auto;
   }
+
+  /* Auth / Login / Register: iPhone usability */
+  .auth-gate,
+  .auth-gate-inner,
+  .auth-card,
+  .auth-panel,
+  .auth-form,
+  .auth-oauth-row {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .auth-gate {
+    min-height: 100dvh;
+    height: 100dvh;
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding:
+      calc(0.9rem + env(safe-area-inset-top, 0px))
+      calc(1rem + env(safe-area-inset-right, 0px))
+      calc(1rem + env(safe-area-inset-bottom, 0px))
+      calc(1rem + env(safe-area-inset-left, 0px));
+  }
+
+  .auth-gate-inner {
+    max-width: calc(100vw - 32px);
+    margin: auto;
+  }
+
+  .auth-card {
+    padding: 1rem 0.95rem;
+    overflow-x: hidden;
+  }
+
+  .auth-title {
+    font-size: 1.32rem;
+  }
+
+  .auth-tagline {
+    font-size: 0.84rem;
+  }
+
+  .auth-panel-title {
+    font-size: 1rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .auth-divider {
+    margin: 0.8rem 0;
+    font-size: 0.68rem;
+  }
+
+  .auth-legal,
+  .auth-oauth-dev,
+  .auth-security-note,
+  .auth-hint,
+  .auth-switch {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .auth-form .field,
+  .auth-form .field input,
+  .auth-form .field textarea,
+  .auth-form .btn,
+  .auth-oauth-row .btn-oauth,
+  .auth-oauth-row .btn,
+  #authBtnShowEmailLogin,
+  #authBtnShowRegister,
+  #authBtnQuickLogin {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .auth-form input,
+  .auth-form button,
+  .auth-form .btn,
+  .btn-oauth,
+  #authBtnGoogle,
+  #authBtnApple {
+    min-height: 44px;
+  }
+
+  .field-label-row {
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
 }

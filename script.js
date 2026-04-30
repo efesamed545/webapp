@@ -320,6 +320,7 @@ async function loadUserProfile() {
     appleRedirectUri: typeof window !== "undefined" ? window.location.origin + "/" : "",
   };
   const NATIVE_OAUTH_REDIRECT = "com.flow.app://auth/callback";
+  const WEB_OAUTH_REDIRECT = "https://webapp-weld-xi.vercel.app";
   let oauthNativeBridgeBound = false;
 
   function isCapacitorNativeRuntime() {
@@ -332,7 +333,7 @@ async function loadUserProfile() {
 
   function getOAuthRedirectUrl() {
     if (isCapacitorNativeRuntime()) return NATIVE_OAUTH_REDIRECT;
-    return window.location.origin + window.location.pathname;
+    return WEB_OAUTH_REDIRECT;
   }
 
   function getCapacitorPlugin(name) {
@@ -403,6 +404,7 @@ async function loadUserProfile() {
     if (AppPlugin && typeof AppPlugin.addListener === "function") {
       AppPlugin.addListener("appUrlOpen", (event) => {
         if (!event?.url) return;
+        if (!event.url.startsWith(NATIVE_OAUTH_REDIRECT)) return;
         void handleOAuthCallbackUrl(event.url);
       });
     }

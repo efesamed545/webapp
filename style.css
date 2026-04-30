@@ -5166,3 +5166,110 @@ body.focus-session-active .coach-banner {
     flex-wrap: wrap;
   }
 }
+
+/* Capacitor iPhone viewport + menu click reliability */
+@media (max-width: 768px) {
+  html,
+  body,
+  #app,
+  .app {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden !important;
+  }
+
+  #app,
+  .app,
+  .main,
+  main,
+  .view,
+  .page,
+  .content {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .main,
+  main,
+  .view,
+  .page,
+  .content {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    overflow-x: hidden;
+    transform: none;
+  }
+
+  .main {
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 4.25rem)
+      calc(env(safe-area-inset-right, 0px) + 16px)
+      calc(env(safe-area-inset-bottom, 0px) + 16px)
+      calc(env(safe-area-inset-left, 0px) + 16px);
+  }
+
+  .card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .nav-toggle {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    left: calc(env(safe-area-inset-left, 0px) + 12px);
+    z-index: 5000 !important;
+    min-width: 48px;
+    min-height: 48px;
+    pointer-events: auto !important;
+    touch-action: manipulation;
+    isolation: isolate;
+  }
+
+  .sidebar-backdrop {
+    z-index: 3000 !important;
+    pointer-events: auto;
+  }
+
+  .sidebar {
+    z-index: 4000 !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .auth-gate {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 12px)
+      calc(env(safe-area-inset-right, 0px) + 12px)
+      calc(env(safe-area-inset-bottom, 0px) + 12px)
+      calc(env(safe-area-inset-left, 0px) + 12px);
+  }
+
+  .auth-gate-inner {
+    width: calc(100vw - 24px);
+    max-width: 420px;
+  }
+
+  .auth-card {
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+
+  .auth-form input,
+  .auth-form button,
+  .btn-oauth {
+    min-height: 44px;
+  }
+}

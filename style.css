@@ -4882,16 +4882,154 @@ body.focus-session-active .coach-banner {
     overflow-x: hidden;
   }
 
+  /* Achievements mobile fit */
+  #viewAchievements,
+  .view-achievements,
+  .achievements-layout,
+  .achievements-head-card,
+  .achievements-controls-card,
+  .achievements-grid,
+  .ach-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-left: 0;
+    margin-right: 0;
+    overflow-x: hidden;
+  }
+
+  .achievements-layout {
+    padding: 0 0.25rem;
+    gap: 0.6rem;
+  }
+
+  .achievements-head-card,
+  .achievements-controls-card,
+  .ach-card {
+    padding: 0.7rem;
+  }
+
+  .achievements-summary,
+  .ach-meta-row,
+  .ach-card-head {
+    min-width: 0;
+    flex-wrap: wrap;
+    row-gap: 0.3rem;
+  }
+
+  .ach-summary-pill,
+  .ach-category-pill,
+  .ach-date-pill,
+  .ach-state-tag {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .ach-filter-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.55rem;
+  }
+
+  .ach-filter-grid .field,
+  .ach-filter-grid .input-select,
+  #achFilterStatus,
+  #achFilterCategory {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .achievements-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem;
+  }
+
+  .ach-name,
+  .ach-desc,
+  .achievements-intro,
+  .ach-progress-label {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .ach-progress-track {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Focus mobile fit */
+  #viewFocus,
+  .view-focus,
+  .focus-layout,
+  .focus-card,
+  .focus-card--main,
+  .focus-card--side,
+  .focus-grid,
+  .focus-timer-block,
+  .focus-active-task,
+  .focus-break,
+  .focus-actions,
+  .focus-presets {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .focus-layout,
+  .focus-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem;
+  }
+
+  .focus-card {
+    padding: 0.75rem;
+  }
+
+  #focusTaskSelect,
+  #focusCustomMinutes {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .focus-presets {
+    gap: 0.4rem;
+  }
+
+  .focus-presets .btn {
+    flex: 1 1 calc(50% - 0.25rem);
+    min-width: 0;
+  }
+
   .focus-timer-display {
-    font-size: clamp(2rem, 15vw, 2.8rem);
+    font-size: clamp(1.85rem, 13vw, 2.6rem);
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 
   .focus-actions .btn {
     flex: 1 1 calc(50% - 0.35rem);
+    min-height: 44px;
+    min-width: 0;
   }
 
   .focus-break-row {
     flex-wrap: wrap;
+  }
+
+  #focusTaskTitle,
+  #focusTaskNotes,
+  .focus-guidance,
+  .focus-session-item,
+  .focus-session-item span,
+  #focusRouteProgress {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .group-code,

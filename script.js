@@ -7658,33 +7658,40 @@ async function loadUserProfile() {
     updateAccountSettingsLabel();
     bindWelcomeModalEvents();
 
+    const closeMobileSidebar = () => {
+      els.sidebar.classList.remove("open");
+      els.sidebarBackdrop.hidden = true;
+      document.body.classList.remove("sidebar-open");
+      els.navToggle.setAttribute("aria-expanded", "false");
+    };
+
+    const setMobileSidebarState = (open) => {
+      els.sidebar.classList.toggle("open", Boolean(open));
+      els.sidebarBackdrop.hidden = !open;
+      document.body.classList.toggle("sidebar-open", Boolean(open));
+      els.navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+
     els.navItems.forEach((btn) => {
       btn.addEventListener("click", () => {
         setView(btn.dataset.view);
-        els.sidebar.classList.remove("open");
-        els.sidebarBackdrop.hidden = true;
-        els.navToggle.setAttribute("aria-expanded", "false");
+        closeMobileSidebar();
       });
     });
 
     els.navToggle.addEventListener("click", () => {
-      const open = els.sidebar.classList.toggle("open");
-      els.navToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      els.sidebarBackdrop.hidden = !open;
+      const open = !els.sidebar.classList.contains("open");
+      setMobileSidebarState(open);
     });
 
     els.sidebarBackdrop.addEventListener("click", () => {
-      els.sidebar.classList.remove("open");
-      els.sidebarBackdrop.hidden = true;
-      els.navToggle.setAttribute("aria-expanded", "false");
+      closeMobileSidebar();
     });
 
     document.addEventListener("click", (e) => {
       if (e.target.closest(".sidebar") || e.target.closest(".nav-toggle")) return;
       if (window.innerWidth <= 768) {
-        els.sidebar.classList.remove("open");
-        els.sidebarBackdrop.hidden = true;
-        els.navToggle.setAttribute("aria-expanded", "false");
+        closeMobileSidebar();
       }
     });
 

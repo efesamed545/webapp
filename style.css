@@ -2268,6 +2268,33 @@ html[dir="rtl"] .welcome-card-body {
   box-shadow: 0 12px 32px rgba(230, 126, 34, 0.38);
 }
 
+.btn-danger {
+  background: linear-gradient(135deg, var(--danger) 0%, #b91c1c 100%);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(220, 38, 38, 0.32);
+  border-radius: var(--radius-pill);
+  border: none;
+  min-height: 48px;
+  font-weight: 600;
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.btn-danger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .btn-danger {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.settings-delete-account-btn {
+  margin-top: 0.75rem;
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-muted);

@@ -2131,9 +2131,11 @@ async function loadUserProfile() {
     "account.title": "Account",
     "account.signedInHint": "Signed in. Your productivity data is synced securely via Supabase.",
     "account.logout": "Log out",
-    "account.deleteAccount": "Delete account…",
-    "account.deleteConfirm": "Delete your account and sign-in data on this device? Cloud data remains until you use “Clear app data” while signed in.",
-    "account.deleted": "Account removed from this device.",
+    "account.deleteAccount": "Delete account",
+    "account.deleteConfirm":
+      "Are you sure you want to delete your account? This action cannot be undone.",
+    "account.deleteSuccess": "Your account has been deleted.",
+    "account.deleteFailed": "Could not delete your account. Please try again.",
     "account.loggedOut": "Logged out",
     "account.welcome": "Welcome back",
     "legal.privacyTitle": "Privacy policy",
@@ -2200,9 +2202,11 @@ async function loadUserProfile() {
     "account.title": "Konto",
     "account.signedInHint": "Angemeldet. Nutzdaten werden sicher über Supabase synchronisiert.",
     "account.logout": "Abmelden",
-    "account.deleteAccount": "Konto löschen…",
-    "account.deleteConfirm": "Konto und Anmeldedaten auf diesem Gerät löschen? Cloud-Daten bleiben, bis du eingeloggt „App-Daten löschen“ nutzt.",
-    "account.deleted": "Konto auf diesem Gerät entfernt.",
+    "account.deleteAccount": "Account löschen",
+    "account.deleteConfirm":
+      "Willst du wirklich deinen Account löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "account.deleteSuccess": "Dein Account wurde gelöscht.",
+    "account.deleteFailed": "Account konnte nicht gelöscht werden.",
     "account.loggedOut": "Abgemeldet",
     "account.welcome": "Willkommen zurück",
     "legal.privacyTitle": "Datenschutzerklärung",
@@ -7297,18 +7301,54 @@ async function loadUserProfile() {
     showToast(t("account.loggedOut"));
   }
 
-  function deleteAccountFlow() {
+  async function deleteAccountFlow() {
+    if (!confirm(t("account.deleteConfirm"))) return;
     const s = readSessionRaw();
-    if (!s || !confirm(t("account.deleteConfirm"))) return;
-    authUsers = authUsers.filter((u) => u.id !== s.userId);
-    saveAuthUsers();
+    if (!s) return;
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.error("deleteAccountFlow: no authenticated Supabase user");
+      showToast(t("account.deleteFailed"));
+      return;
+    }
+
+    const btn = els.btnDeleteAccount;
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+    }
+
     try {
-      sessionStorage.removeItem(WELCOME_SESSION_KEY);
-    } catch (_) {}
-    clearSession();
-    showAuthScreen();
-    applyDomI18n();
-    showToast(t("account.deleted"));
+      const { error: rpcError } = await supabase.rpc("delete_user_account");
+      if (rpcError) {
+        console.error("delete_user_account RPC:", rpcError);
+        showToast(t("account.deleteFailed"));
+        return;
+      }
+
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) console.error("signOut after delete:", signOutError);
+
+      void stopSupabaseRealtime();
+      authUsers = authUsers.filter((u) => u.id !== s.userId);
+      saveAuthUsers();
+      try {
+        sessionStorage.removeItem(WELCOME_SESSION_KEY);
+      } catch (_) {}
+      clearSession();
+      closeSettingsModal();
+      showAuthScreen();
+      applyDomI18n();
+      showToast(t("account.deleteSuccess"));
+    } catch (e) {
+      console.error("deleteAccountFlow:", e);
+      showToast(t("account.deleteFailed"));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+      }
+    }
   }
 
   async function handleAuthLoginSubmit(e) {
@@ -7576,8 +7616,7 @@ async function loadUserProfile() {
       logoutUser();
     });
     els.btnDeleteAccount?.addEventListener("click", () => {
-      closeSettingsModal();
-      deleteAccountFlow();
+      void deleteAccountFlow();
     });
     els.btnCookiePrefs?.addEventListener("click", () => {
       closeSettingsModal();

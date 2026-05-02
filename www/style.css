@@ -5617,4 +5617,47 @@ body.focus-session-active .coach-banner {
     overflow-y: visible !important;
     overflow-x: hidden !important;
   }
+
+  /*
+   * iOS Safari / Capacitor WKWebView: inputs with computed font-size < 16px
+   * trigger automatic viewport zoom on focus. Force 16px on all text-like controls.
+   */
+  textarea,
+  select,
+  .input-select,
+  input:not([type]),
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"],
+  input[type="month"],
+  input[type="week"] {
+    font-size: 16px !important;
+    transform: none !important;
+  }
+
+  /* Form / modal actions — match minimum readable size on small screens */
+  .btn,
+  .btn-sm,
+  .btn-settings,
+  .btn-primary,
+  .btn-ghost,
+  .btn-oauth,
+  .modal-card .btn,
+  .modal .btn,
+  .cookie-bar .btn,
+  .auth-gate .btn {
+    font-size: 16px !important;
+  }
+
+  .auth-gate .btn-link,
+  .modal-card .btn-link {
+    font-size: 16px !important;
+  }
 }

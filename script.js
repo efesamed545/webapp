@@ -411,6 +411,7 @@ async function loadUserProfile() {
     if (AppPlugin && typeof AppPlugin.addListener === "function") {
       await AppPlugin.addListener("appUrlOpen", async (event) => {
         console.log("[oauth] appUrlOpen:", event?.url);
+        console.log("[auth] email confirmation callback:", event?.url);
         if (!event?.url || !event.url.includes("auth/callback")) return;
         try {
           await handleOAuthCallbackUrl(event.url);
@@ -428,6 +429,7 @@ async function loadUserProfile() {
         console.log("[oauth] getLaunchUrl:", launch?.url);
         if (launch?.url && launch.url.includes("auth/callback")) {
           try {
+            console.log("[auth] email confirmation callback:", launch.url);
             await handleOAuthCallbackUrl(launch.url);
             const { data } = await supabase.auth.getSession();
             console.log("[oauth] session after callback:", data?.session);
@@ -7383,10 +7385,16 @@ async function loadUserProfile() {
   
     const email = document.getElementById("authRegEmail").value;
     const password = document.getElementById("authRegPassword").value;
-  
+
+    const emailRedirectTo = getOAuthRedirectUrl();
+    console.log("[auth] signup emailRedirectTo:", emailRedirectTo);
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo,
+      },
     });
   
     if (error) {

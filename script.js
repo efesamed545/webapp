@@ -8352,3 +8352,22 @@ async function loadUserProfile() {
   registerFlowServiceWorker();
   init();
 })();
+async function deleteAccount() {
+  const confirmDelete = confirm(
+    "Willst du wirklich deinen Account löschen? Diese Aktion ist endgültig."
+  );
+
+  if (!confirmDelete) return;
+
+  const { error } = await supabase.rpc("delete_user_account");
+
+  if (error) {
+    console.error("Delete error:", error);
+    alert("Fehler beim Löschen");
+    return;
+  }
+
+  await supabase.auth.signOut();
+
+  window.location.reload();
+}

@@ -176,6 +176,8 @@ html[data-reduce-motion] .toast {
 html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
+  /* Match iOS launch + in-app splash; avoids a white flash before CSS theme loads. */
+  background-color: #fcf5f0;
 }
 
 body {
@@ -4665,7 +4667,9 @@ body.focus-session-active .coach-banner {
   .app-splash {
     position: fixed;
     inset: 0;
-    /* Below .auth-gate: full-screen splash must not intercept taps on login (iOS / Capacitor). */
+    /* Never intercept taps — auth-gate (z-index 5000) and main UI stay reachable. */
+    pointer-events: none;
+    /* Below .auth-gate: visual layer only (iOS / Capacitor). */
     z-index: 50;
     display: flex;
     align-items: center;
@@ -4705,14 +4709,6 @@ body.focus-session-active .coach-banner {
       0 4px 24px rgba(230, 126, 34, 0.18),
       0 1px 0 rgba(255, 255, 255, 0.8) inset;
     object-fit: cover;
-  }
-
-  .app-splash-title {
-    font-family: var(--font-heading, "Plus Jakarta Sans", system-ui, sans-serif);
-    font-weight: 700;
-    font-size: clamp(1.65rem, 5vw, 2rem);
-    letter-spacing: -0.03em;
-    color: #c45d12;
   }
 
   .app-splash-loader {

@@ -582,6 +582,13 @@ border: none;
   min-height: min(70vh, 560px);
 }
 
+.settings-nav-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  align-self: start;
+}
+
 .settings-nav {
   display: flex;
   flex-direction: column;
@@ -619,6 +626,18 @@ border: none;
 .settings-nav-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.settings-nav-btn--external {
+  flex-shrink: 0;
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.settings-nav-btn--external:hover {
+  color: var(--accent-text);
 }
 
 .settings-content-scroll {
@@ -1704,6 +1723,18 @@ html[dir="rtl"] .nav-toggle {
   text-align: center;
   font-size: 0.7rem !important;
   line-height: 1.4;
+}
+
+.auth-datenschutz-footer {
+  margin: 0.85rem 0 0;
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+  text-align: center;
+}
+
+.auth-datenschutz-link {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .app[hidden] {

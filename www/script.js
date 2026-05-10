@@ -321,6 +321,8 @@ async function loadUserProfile() {
   };
   const NATIVE_OAUTH_REDIRECT = "com.flow.app://auth/callback";
   const WEB_OAUTH_REDIRECT = "https://webapp-weld-xi.vercel.app";
+  /** In-app “Datenschutz” links open this URL in the system browser (Capacitor) or a new tab (web). */
+  const FLOW_PRIVACY_POLICY_EXTERNAL_URL = "https://pastebin.com/3D2S03aR";
   let oauthNativeBridgeBound = false;
 
   function isCapacitorNativeRuntime() {
@@ -348,6 +350,30 @@ async function loadUserProfile() {
       return window.Capacitor?.Plugins?.[name] || null;
     } catch (_) {
       return null;
+    }
+  }
+
+  async function openExternalPrivacyPolicy() {
+    const url = FLOW_PRIVACY_POLICY_EXTERNAL_URL;
+    try {
+      if (isCapacitorNativeRuntime()) {
+        const Browser = getCapacitorPlugin("Browser");
+        if (Browser && typeof Browser.open === "function") {
+          await Browser.open({ url });
+          return;
+        }
+      }
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (opened) return;
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      console.error("openExternalPrivacyPolicy:", e);
     }
   }
 
@@ -1299,6 +1325,7 @@ async function loadUserProfile() {
     "settings.nav.streak": "Goals & streak",
     "settings.nav.recap": "Statistics",
     "settings.nav.general": "General",
+    "legal.datenschutzNav": "Privacy policy",
     "settings.accountProfileHint": "Your sign-in, profile picture, and display name.",
     "settings.changePassword": "Change password",
     "settings.passwordSoon": "Password changes will be available when a server is connected.",
@@ -1587,6 +1614,7 @@ async function loadUserProfile() {
     "settings.nav.streak": "Ziele & Streak",
     "settings.nav.recap": "Statistik",
     "settings.nav.general": "Allgemein",
+    "legal.datenschutzNav": "Datenschutz",
     "settings.accountProfileHint": "Anmeldung, Profilbild und Anzeigename.",
     "settings.changePassword": "Passwort ändern",
     "settings.passwordSoon": "Passwort ändern ist verfügbar, sobald ein Server angebunden ist.",
@@ -2477,6 +2505,11 @@ async function loadUserProfile() {
       });
     });
 
+    document.getElementById("btnSettingsNavDatenschutz")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      void openExternalPrivacyPolicy();
+    });
+
     const wireChk = (id, key) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -2789,6 +2822,7 @@ async function loadUserProfile() {
     authBackFromRegister: $("#authBackFromRegister"),
     authLinkTerms: $("#authLinkTerms"),
     authLinkPrivacyFromGate: $("#authLinkPrivacyFromGate"),
+    authLinkDatenschutzExternal: $("#authLinkDatenschutzExternal"),
     cookieBar: $("#cookieBar"),
     cookieAcceptAll: $("#cookieAcceptAll"),
     cookieNecessaryOnly: $("#cookieNecessaryOnly"),
@@ -7609,6 +7643,7 @@ async function loadUserProfile() {
     els.authToggleRegPw?.addEventListener("click", () => togglePasswordVisibility(els.authRegPassword, els.authToggleRegPw));
     els.authLinkTerms?.addEventListener("click", () => openLegalModal("terms"));
     els.authLinkPrivacyFromGate?.addEventListener("click", () => openLegalModal("privacy"));
+    els.authLinkDatenschutzExternal?.addEventListener("click", () => void openExternalPrivacyPolicy());
 
     els.cookieAcceptAll?.addEventListener("click", () =>
       saveCookieConsent({ analytics: true, marketing: true })
@@ -8352,3 +8387,22 @@ async function loadUserProfile() {
   registerFlowServiceWorker();
   init();
 })();
+async function deleteAccount() {
+  const confirmDelete = confirm(
+    "Willst du wirklich deinen Account löschen? Diese Aktion ist endgültig."
+  );
+
+  if (!confirmDelete) return;
+
+  const { error } = await supabase.rpc("delete_user_account");
+
+  if (error) {
+    console.error("Delete error:", error);
+    alert("Fehler beim Löschen");
+    return;
+  }
+
+  await supabase.auth.signOut();
+
+  window.location.reload();
+}

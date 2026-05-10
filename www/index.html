@@ -125,6 +125,9 @@
           <button type="button" class="btn-link" id="authLinkPrivacyFromGate" data-i18n="auth.privacy">Privacy</button>.
         </p>
         <p class="auth-oauth-dev muted small" data-i18n="auth.oauthDevHint">Google &amp; Apple: configure client IDs in script (AUTH_CONFIG) for production.</p>
+        <p class="auth-datenschutz-footer">
+          <button type="button" class="btn-link auth-datenschutz-link" id="authLinkDatenschutzExternal" data-i18n="legal.datenschutzNav">Datenschutz</button>
+        </p>
       </div>
     </div>
   </div>
@@ -889,17 +892,20 @@
       </header>
       <div class="modal-body settings-body">
         <div class="settings-layout">
-          <nav class="settings-nav" id="settingsNav" role="tablist" data-i18n-aria="settings.navAria" aria-label="Settings sections">
-            <button type="button" class="settings-nav-btn settings-nav-btn--active" role="tab" id="tab-settings-account" aria-selected="true" aria-controls="settings-section-account" data-settings-jump="settings-section-account" data-i18n="settings.nav.account">Account</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-notifications" aria-selected="false" aria-controls="settings-section-notifications" data-settings-jump="settings-section-notifications" data-i18n="settings.nav.notifications">Notifications</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-language" aria-selected="false" aria-controls="settings-section-language" data-settings-jump="settings-section-language" data-i18n="settings.nav.language">Language</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-appearance" aria-selected="false" aria-controls="settings-section-appearance" data-settings-jump="settings-section-appearance" data-i18n="settings.nav.appearance">Appearance</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-privacy" aria-selected="false" aria-controls="settings-section-privacy" data-settings-jump="settings-section-privacy" data-i18n="settings.nav.privacy">Privacy</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-groups" aria-selected="false" aria-controls="settings-section-groups" data-settings-jump="settings-section-groups" data-i18n="settings.nav.groups">Groups</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-streak" aria-selected="false" aria-controls="settings-section-streak" data-settings-jump="settings-section-streak" data-i18n="settings.nav.streak">Goals</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-recap" aria-selected="false" aria-controls="settings-section-recap" data-settings-jump="settings-section-recap" data-i18n="settings.nav.recap">Statistics</button>
-            <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-general" aria-selected="false" aria-controls="settings-section-general" data-settings-jump="settings-section-general" data-i18n="settings.nav.general">General</button>
-          </nav>
+          <div class="settings-nav-column">
+            <nav class="settings-nav" id="settingsNav" role="tablist" data-i18n-aria="settings.navAria" aria-label="Settings sections">
+              <button type="button" class="settings-nav-btn settings-nav-btn--active" role="tab" id="tab-settings-account" aria-selected="true" aria-controls="settings-section-account" data-settings-jump="settings-section-account" data-i18n="settings.nav.account">Account</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-notifications" aria-selected="false" aria-controls="settings-section-notifications" data-settings-jump="settings-section-notifications" data-i18n="settings.nav.notifications">Notifications</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-language" aria-selected="false" aria-controls="settings-section-language" data-settings-jump="settings-section-language" data-i18n="settings.nav.language">Language</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-appearance" aria-selected="false" aria-controls="settings-section-appearance" data-settings-jump="settings-section-appearance" data-i18n="settings.nav.appearance">Appearance</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-privacy" aria-selected="false" aria-controls="settings-section-privacy" data-settings-jump="settings-section-privacy" data-i18n="settings.nav.privacy">Privacy</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-groups" aria-selected="false" aria-controls="settings-section-groups" data-settings-jump="settings-section-groups" data-i18n="settings.nav.groups">Groups</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-streak" aria-selected="false" aria-controls="settings-section-streak" data-settings-jump="settings-section-streak" data-i18n="settings.nav.streak">Goals</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-recap" aria-selected="false" aria-controls="settings-section-recap" data-settings-jump="settings-section-recap" data-i18n="settings.nav.recap">Statistics</button>
+              <button type="button" class="settings-nav-btn" role="tab" id="tab-settings-general" aria-selected="false" aria-controls="settings-section-general" data-settings-jump="settings-section-general" data-i18n="settings.nav.general">General</button>
+            </nav>
+            <button type="button" class="settings-nav-btn settings-nav-btn--external" id="btnSettingsNavDatenschutz" data-i18n="legal.datenschutzNav">Datenschutz</button>
+          </div>
           <div class="settings-content-scroll" id="settingsContentScroll">
             <section class="settings-section settings-panel" id="settings-section-account" role="tabpanel" aria-labelledby="settingsAccountHeading">
               <h3 class="settings-section-title" id="settingsAccountHeading" data-i18n="account.title">Account</h3>

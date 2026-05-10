@@ -2123,22 +2123,26 @@ html[dir="rtl"] .welcome-card-body {
 }
 
 #cookieSettingsModal.modal--cookie,
-#legalModal.modal--legal {
+#legalModal.modal--legal,
+#privacyStatementModal.modal--privacy-statement {
   z-index: 102;
 }
 
 #cookieSettingsBackdrop,
-#legalModalBackdrop {
+#legalModalBackdrop,
+#privacyStatementBackdrop {
   z-index: 101;
 }
 
 /* Above .auth-gate (5000): Terms/Privacy & cookie settings from login must receive taps. */
 #legalModalBackdrop:not([hidden]),
-#cookieSettingsBackdrop:not([hidden]) {
+#cookieSettingsBackdrop:not([hidden]),
+#privacyStatementBackdrop:not([hidden]) {
   z-index: 12000 !important;
 }
 
 #legalModal.modal--legal:not([hidden]),
+#privacyStatementModal.modal--privacy-statement:not([hidden]),
 #cookieSettingsModal.modal--cookie:not([hidden]) {
   z-index: 12001 !important;
 }
@@ -2148,12 +2152,54 @@ html[dir="rtl"] .welcome-card-body {
   max-height: 85vh;
 }
 
+.modal-card--privacy-statement {
+  max-height: min(88vh, 720px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal-card--privacy-statement .modal-head {
+  flex-shrink: 0;
+}
+
+.modal-card--privacy-statement .privacy-statement-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(65vh, 520px);
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.5rem;
+}
+
 .legal-body {
   max-height: 60vh;
   overflow-y: auto;
   font-size: 0.875rem;
   line-height: 1.55;
   color: var(--text-muted);
+}
+
+.privacy-statement-body .privacy-statement-lead {
+  margin: 1rem 0 0.35rem;
+}
+
+.privacy-statement-list {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  line-height: 1.5;
+}
+
+.privacy-statement-list li {
+  margin-bottom: 0.35rem;
+}
+
+.privacy-statement-contact {
+  margin-top: 1rem;
+}
+
+.privacy-contact-placeholder {
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 .legal-body h3 {

@@ -321,8 +321,6 @@ async function loadUserProfile() {
   };
   const NATIVE_OAUTH_REDIRECT = "com.flow.app://auth/callback";
   const WEB_OAUTH_REDIRECT = "https://webapp-weld-xi.vercel.app";
-  /** In-app “Datenschutz” links open this URL in the system browser (Capacitor) or a new tab (web). */
-  const FLOW_PRIVACY_POLICY_EXTERNAL_URL = "https://pastebin.com/3D2S03aR";
   let oauthNativeBridgeBound = false;
 
   function isCapacitorNativeRuntime() {
@@ -350,30 +348,6 @@ async function loadUserProfile() {
       return window.Capacitor?.Plugins?.[name] || null;
     } catch (_) {
       return null;
-    }
-  }
-
-  async function openExternalPrivacyPolicy() {
-    const url = FLOW_PRIVACY_POLICY_EXTERNAL_URL;
-    try {
-      if (isCapacitorNativeRuntime()) {
-        const Browser = getCapacitorPlugin("Browser");
-        if (Browser && typeof Browser.open === "function") {
-          await Browser.open({ url });
-          return;
-        }
-      }
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      if (opened) return;
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch (e) {
-      console.error("openExternalPrivacyPolicy:", e);
     }
   }
 
@@ -2173,6 +2147,9 @@ async function loadUserProfile() {
     "legal.privacyBody":
       "<h3>Data we process</h3><p>Flow syncs tasks, events, groups, self-care, focus sessions, achievements, buddy state, and gamification points through Supabase. Theme, language, and UI preferences may be stored locally in your browser.</p><h3>Your rights</h3><p>You can delete cloud data in Settings while signed in, or remove your account from this device.</p>",
     "legal.termsBody": "<h3>Use of Flow</h3><p>Flow is provided as-is for personal productivity. Do not use it for unlawful purposes.</p><h3>Accounts</h3><p>You are responsible for your credentials. In production, connect a backend for recovery and security.</p>",
+    "privacyStatement.title": "Privacy policy",
+    "privacyStatement.bodyHtml":
+      '<p>Flow only stores data that is necessary to use the app.</p><p class="privacy-statement-lead"><strong>Data we store:</strong></p><ul class="privacy-statement-list"><li>Email address</li><li>Profile information</li><li>Tasks</li><li>Calendar and event data</li><li>Focus sessions</li><li>Self-care entries</li><li>Achievements and progress</li><li>Group information</li></ul><p>Data is stored and processed via Supabase.</p><p>We do not sell user data or share personal data for advertising purposes.</p><p>You can delete your account at any time in Settings. When you delete your account, the account and associated app data are removed.</p><p>Google sign-in may be used for login. Google’s privacy rules apply in addition.</p><p class="privacy-statement-contact"><strong>Contact:</strong> <span class="privacy-contact-placeholder">[INSERT YOUR EMAIL HERE]</span></p>',
   });
 
   Object.assign(T.de, {
@@ -2244,6 +2221,9 @@ async function loadUserProfile() {
     "legal.privacyBody":
       "<h3>Verarbeitete Daten</h3><p>Flow synchronisiert Aufgaben, Termine, Gruppen, Self-Care, Fokus, Erfolge, Buddy und Punkte über Supabase. Theme, Sprache und UI-Einstellungen können lokal im Browser gespeichert werden.</p><h3>Rechte</h3><p>Cloud-Daten kannst du in den Einstellungen löschen, solange du angemeldet bist, oder das Konto von diesem Gerät entfernen.</p>",
     "legal.termsBody": "<h3>Nutzung</h3><p>Flow wird „wie besehen“ für persönliche Produktivität bereitgestellt.</p><h3>Konten</h3><p>Du bist für Zugangsdaten verantwortlich. Für Produktion ein Backend anbinden.</p>",
+    "privacyStatement.title": "Datenschutzerklärung",
+    "privacyStatement.bodyHtml":
+      '<p>Flow speichert nur Daten, die für die Nutzung der App notwendig sind.</p><p class="privacy-statement-lead"><strong>Gespeicherte Daten:</strong></p><ul class="privacy-statement-list"><li>E-Mail-Adresse</li><li>Profilinformationen</li><li>Aufgaben</li><li>Kalender- und Termin-Daten</li><li>Fokus-Sessions</li><li>Selfcare-Einträge</li><li>Achievements und Fortschritt</li><li>Gruppeninformationen</li></ul><p>Die Daten werden über Supabase gespeichert und verarbeitet.</p><p>Wir verkaufen keine Nutzerdaten und geben keine persönlichen Daten zu Werbezwecken weiter.</p><p>Nutzer können ihren Account jederzeit in den Einstellungen löschen. Beim Löschen werden Account und zugehörige App-Daten entfernt.</p><p>Google Login kann zur Anmeldung genutzt werden. Dabei gelten zusätzlich die Datenschutzregeln von Google.</p><p class="privacy-statement-contact"><strong>Kontakt:</strong> <span class="privacy-contact-placeholder">[HIER EURE EMAIL EINTRAGEN]</span></p>',
   });
 
   function t(key) {
@@ -2507,7 +2487,7 @@ async function loadUserProfile() {
 
     document.getElementById("btnSettingsNavDatenschutz")?.addEventListener("click", (e) => {
       e.preventDefault();
-      void openExternalPrivacyPolicy();
+      openPrivacyStatementModal();
     });
 
     const wireChk = (id, key) => {
@@ -2838,6 +2818,11 @@ async function loadUserProfile() {
     legalModalClose: $("#legalModalClose"),
     legalModalBody: $("#legalModalBody"),
     legalModalTitle: $("#legalModalTitle"),
+    privacyStatementModal: $("#privacyStatementModal"),
+    privacyStatementBackdrop: $("#privacyStatementBackdrop"),
+    privacyStatementClose: $("#privacyStatementClose"),
+    privacyStatementBody: $("#privacyStatementBody"),
+    privacyStatementTitle: $("#privacyStatementTitle"),
     accountSignedInLabel: $("#accountSignedInLabel"),
     btnLogout: $("#btnLogout"),
     btnDeleteAccount: $("#btnDeleteAccount"),
@@ -7584,6 +7569,17 @@ async function loadUserProfile() {
     hideModal(els.legalModal, els.legalModalBackdrop);
   }
 
+  function openPrivacyStatementModal() {
+    if (!els.privacyStatementModal) return;
+    if (els.privacyStatementTitle) els.privacyStatementTitle.textContent = t("privacyStatement.title");
+    if (els.privacyStatementBody) els.privacyStatementBody.innerHTML = t("privacyStatement.bodyHtml");
+    showModal(els.privacyStatementModal, els.privacyStatementBackdrop);
+  }
+
+  function closePrivacyStatementModal() {
+    hideModal(els.privacyStatementModal, els.privacyStatementBackdrop);
+  }
+
   function bindAuthTapDebugOnce() {
     if (window.__flowAuthTapDebugBound) return;
     window.__flowAuthTapDebugBound = true;
@@ -7642,8 +7638,8 @@ async function loadUserProfile() {
     els.authToggleLoginPw?.addEventListener("click", () => togglePasswordVisibility(els.authLoginPassword, els.authToggleLoginPw));
     els.authToggleRegPw?.addEventListener("click", () => togglePasswordVisibility(els.authRegPassword, els.authToggleRegPw));
     els.authLinkTerms?.addEventListener("click", () => openLegalModal("terms"));
-    els.authLinkPrivacyFromGate?.addEventListener("click", () => openLegalModal("privacy"));
-    els.authLinkDatenschutzExternal?.addEventListener("click", () => void openExternalPrivacyPolicy());
+    els.authLinkPrivacyFromGate?.addEventListener("click", () => openPrivacyStatementModal());
+    els.authLinkDatenschutzExternal?.addEventListener("click", () => openPrivacyStatementModal());
 
     els.cookieAcceptAll?.addEventListener("click", () =>
       saveCookieConsent({ analytics: true, marketing: true })
@@ -7665,10 +7661,12 @@ async function loadUserProfile() {
       closeSettingsModal();
       openCookieSettingsModal();
     });
-    els.btnOpenPrivacyFromSettings?.addEventListener("click", () => openLegalModal("privacy"));
+    els.btnOpenPrivacyFromSettings?.addEventListener("click", () => openPrivacyStatementModal());
     els.btnOpenTermsFromSettings?.addEventListener("click", () => openLegalModal("terms"));
     els.legalModalClose?.addEventListener("click", closeLegalModal);
     els.legalModalBackdrop?.addEventListener("click", closeLegalModal);
+    els.privacyStatementClose?.addEventListener("click", closePrivacyStatementModal);
+    els.privacyStatementBackdrop?.addEventListener("click", closePrivacyStatementModal);
   }
 
   // ——— Init & events ———
@@ -8348,6 +8346,7 @@ async function loadUserProfile() {
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         if (!els.cookieSettingsModal?.hidden) closeCookieSettingsModal();
+        else if (!els.privacyStatementModal?.hidden) closePrivacyStatementModal();
         else if (!els.legalModal?.hidden) closeLegalModal();
         else if (!els.settingsModal.hidden) closeSettingsModal();
         else if (!els.groupCreateModal?.hidden) closeGroupCreateModal();

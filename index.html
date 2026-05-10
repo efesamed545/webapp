@@ -814,6 +814,18 @@
     </div>
   </div>
 
+  <!-- Modal: Datenschutzerklärung (in-app) -->
+  <div class="modal-backdrop" id="privacyStatementBackdrop" hidden aria-hidden="true"></div>
+  <div class="modal modal--legal modal--privacy-statement" id="privacyStatementModal" role="dialog" aria-modal="true" aria-labelledby="privacyStatementTitle" hidden aria-hidden="true">
+    <div class="modal-card modal-card--legal modal-card--privacy-statement">
+      <header class="modal-head">
+        <h2 id="privacyStatementTitle" data-i18n="privacyStatement.title">Datenschutzerklärung</h2>
+        <button type="button" class="modal-close" id="privacyStatementClose" data-i18n-aria="aria.closeDialog" aria-label="Close">&times;</button>
+      </header>
+      <div class="modal-body legal-body privacy-statement-body" id="privacyStatementBody" aria-live="polite"></div>
+    </div>
+  </div>
+
   <!-- Modal: Create group -->
   <div class="modal-backdrop" id="groupCreateModalBackdrop" hidden aria-hidden="true"></div>
   <div class="modal modal--group-create" id="groupCreateModal" role="dialog" aria-modal="true" aria-labelledby="groupCreateModalTitle" hidden aria-hidden="true">
